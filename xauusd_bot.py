@@ -65,7 +65,7 @@ class LivePriceFetcher:
         try:
             url = "https://data-asg.goldprice.org/dbXRates/USD"
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                 'Accept': 'application/json',
                 'Referer': 'https://goldprice.org/',
             }
@@ -148,7 +148,6 @@ class LivePriceFetcher:
     def get_live_price(self):
         """Try all sources in order until one works"""
         self.errors = []
-
         sources = [
             self.fetch_source_1,
             self.fetch_source_2,
@@ -157,7 +156,6 @@ class LivePriceFetcher:
             self.fetch_source_5,
             self.fetch_source_6,
         ]
-
         for source_func in sources:
             price, source_name = source_func()
             if price and price > 1000:
@@ -165,7 +163,6 @@ class LivePriceFetcher:
                 self.price = price
                 self.source = source_name
                 self.last_update = datetime.now()
-
                 variation = max(abs(price - self.prev_price), 0.50)
                 self.prices_history.append({
                     'time': datetime.now(),
@@ -177,7 +174,6 @@ class LivePriceFetcher:
                 if len(self.prices_history) > 300:
                     self.prices_history = self.prices_history[-300:]
                 return price
-
         return None
 
     def get_dataframe(self):
@@ -189,7 +185,6 @@ class LivePriceFetcher:
         return df
 
     def get_error_log(self):
-        """Return recent errors for debugging"""
         return self.errors
 
 
@@ -221,7 +216,6 @@ class TradingBot:
             ema21_ind = EMAIndicator(close=close, window=21)
             indicators['ema9'] = ema9_ind.ema_indicator().iloc[-1]
             indicators['ema21'] = ema21_ind.ema_indicator().iloc[-1]
-
             indicators['prev_ema9'] = ema9_ind.ema_indicator().iloc[-2]
             indicators['prev_ema21'] = ema21_ind.ema_indicator().iloc[-2]
 
@@ -243,10 +237,8 @@ class TradingBot:
                 indicators['atr'] = max(indicators['atr'], close.iloc[-1] * 0.005)
 
             indicators['price'] = close.iloc[-1]
-
         except Exception:
             return None
-
         return indicators
 
     def get_signal(self, ind):
@@ -308,29 +300,29 @@ class TradingBot:
         if self.position == 'BUY':
             self.pnl = price - self.entry_price
             if price >= self.take_profit:
-                self.history.append(f"  [{now.strftime('%H:%M')}] {GREEN}CLOSE BUY @ ${price:.2f} | TP ATINS | Profit: +${self.pnl:.2f}{RESET}")
+                self.history.append("  [" + now.strftime('%H:%M') + "] " + GREEN + "CLOSE BUY @ $" + f"{price:.2f}" + " | TP ATINS | Profit: +$" + f"{self.pnl:.2f}" + RESET)
                 self.position = None
                 return
             elif price <= self.stop_loss:
-                self.history.append(f"  [{now.strftime('%H:%M')}] {RED}CLOSE BUY @ ${price:.2f} | SL ATINS | Pierdere: ${self.pnl:.2f}{RESET}")
+                self.history.append("  [" + now.strftime('%H:%M') + "] " + RED + "CLOSE BUY @ $" + f"{price:.2f}" + " | SL ATINS | Pierdere: $" + f"{self.pnl:.2f}" + RESET)
                 self.position = None
                 return
             elif signal == "SELL" and strength >= 2:
-                self.history.append(f"  [{now.strftime('%H:%M')}] {YELLOW}CLOSE BUY @ ${price:.2f} | Semnal opus | P/L: ${self.pnl:.2f}{RESET}")
+                self.history.append("  [" + now.strftime('%H:%M') + "] " + YELLOW + "CLOSE BUY @ $" + f"{price:.2f}" + " | Semnal opus | P/L: $" + f"{self.pnl:.2f}" + RESET)
                 self.position = None
 
         elif self.position == 'SELL':
             self.pnl = self.entry_price - price
             if price <= self.take_profit:
-                self.history.append(f"  [{now.strftime('%H:%M')}] {GREEN}CLOSE SELL @ ${price:.2f} | TP ATINS | Profit: +${self.pnl:.2f}{RESET}")
+                self.history.append("  [" + now.strftime('%H:%M') + "] " + GREEN + "CLOSE SELL @ $" + f"{price:.2f}" + " | TP ATINS | Profit: +$" + f"{self.pnl:.2f}" + RESET)
                 self.position = None
                 return
             elif price >= self.stop_loss:
-                self.history.append(f"  [{now.strftime('%H:%M')}] {RED}CLOSE SELL @ ${price:.2f} | SL ATINS | Pierdere: ${self.pnl:.2f}{RESET}")
+                self.history.append("  [" + now.strftime('%H:%M') + "] " + RED + "CLOSE SELL @ $" + f"{price:.2f}" + " | SL ATINS | Pierdere: $" + f"{self.pnl:.2f}" + RESET)
                 self.position = None
                 return
             elif signal == "BUY" and strength >= 2:
-                self.history.append(f"  [{now.strftime('%H:%M')}] {YELLOW}CLOSE SELL @ ${price:.2f} | Semnal opus | P/L: ${self.pnl:.2f}{RESET}")
+                self.history.append("  [" + now.strftime('%H:%M') + "] " + YELLOW + "CLOSE SELL @ $" + f"{price:.2f}" + " | Semnal opus | P/L: $" + f"{self.pnl:.2f}" + RESET)
                 self.position = None
 
         if self.position is None and signal != "ASTEAPTA" and strength >= 2:
@@ -341,11 +333,11 @@ class TradingBot:
             if signal == "BUY":
                 self.take_profit = price + atr * 2
                 self.stop_loss = price - atr * 1
-                self.history.append(f"  [{now.strftime('%H:%M')}] {GREEN}BUY  @ ${price:.2f} -> TP: ${self.take_profit:.2f} | SL: ${self.stop_loss:.2f}{RESET}")
+                self.history.append("  [" + now.strftime('%H:%M') + "] " + GREEN + "BUY  @ $" + f"{price:.2f}" + " -> TP: $" + f"{self.take_profit:.2f}" + " | SL: $" + f"{self.stop_loss:.2f}" + RESET)
             elif signal == "SELL":
                 self.take_profit = price - atr * 2
                 self.stop_loss = price + atr * 1
-                self.history.append(f"  [{now.strftime('%H:%M')}] {RED}SELL @ ${price:.2f} -> TP: ${self.take_profit:.2f} | SL: ${self.stop_loss:.2f}{RESET}")
+                self.history.append("  [" + now.strftime('%H:%M') + "] " + RED + "SELL @ $" + f"{price:.2f}" + " -> TP: $" + f"{self.take_profit:.2f}" + " | SL: $" + f"{self.stop_loss:.2f}" + RESET)
 
         if len(self.history) > 10:
             self.history = self.history[-10:]
@@ -353,7 +345,7 @@ class TradingBot:
     def get_strength_bar(self, strength):
         filled = strength
         empty = 4 - strength
-        bar = "\u2588" * (filled * 3) + "\u2591" * (empty * 3)
+        bar = "#" * (filled * 3) + "-" * (empty * 3)
         pct = int((strength / 4) * 100)
         if strength == 2:
             label = "Moderat"
@@ -363,19 +355,19 @@ class TradingBot:
             label = "Foarte Puternic"
         else:
             label = "Slab"
-        return f"{bar} {pct}% ({label})"
+        return bar + " " + str(pct) + "% (" + label + ")"
 
     def get_rsi_label(self, rsi):
         if rsi < 30:
-            return f"{GREEN}Supravandut{RESET}"
+            return GREEN + "Supravandut" + RESET
         elif rsi < 35:
-            return f"{GREEN}Aproape supravandut{RESET}"
+            return GREEN + "Aproape supravandut" + RESET
         elif rsi > 70:
-            return f"{RED}Supracumparat{RESET}"
+            return RED + "Supracumparat" + RESET
         elif rsi > 65:
-            return f"{RED}Aproape supracumparat{RESET}"
+            return RED + "Aproape supracumparat" + RESET
         else:
-            return f"{CYAN}Neutru{RESET}"
+            return CYAN + "Neutru" + RESET
 
     def display(self, ind, signal, strength, reasons):
         os.system('cls' if os.name == 'nt' else 'clear')
@@ -386,154 +378,153 @@ class TradingBot:
         if self.fetcher.prev_price > 0 and self.fetcher.prev_price != price:
             diff = price - self.fetcher.prev_price
             if diff > 0:
-                price_change = f" {GREEN}\u25b2 +${diff:.2f}{RESET}"
+                price_change = " " + GREEN + "^ +$" + f"{diff:.2f}" + RESET
             elif diff < 0:
-                price_change = f" {RED}\u25bc ${diff:.2f}{RESET}"
+                price_change = " " + RED + "v $" + f"{diff:.2f}" + RESET
 
         if signal == "BUY":
             sig_color = GREEN
-            sig_icon = "\U0001f7e2"
+            sig_icon = "[BUY]"
         elif signal == "SELL":
             sig_color = RED
-            sig_icon = "\U0001f534"
+            sig_icon = "[SELL]"
         else:
             sig_color = WHITE
-            sig_icon = "\u26aa"
+            sig_icon = "[---]"
 
-        ema_trend = f"{GREEN}Bullish \u25b2{RESET}" if ind['ema9'] > ind['ema21'] else f"{RED}Bearish \u25bc{RESET}"
+        ema_trend = GREEN + "Bullish ^" + RESET if ind['ema9'] > ind['ema21'] else RED + "Bearish v" + RESET
 
-        print(f"""
-{CYAN}{BOLD}  \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}
-{CYAN}{BOLD}         \U0001f3c6  XAU/USD TRADING BOT  \U0001f3c6{RESET}
-{CYAN}{BOLD}           \u26a1 LIVE PRICE FEED \u26a1{RESET}
-{CYAN}{BOLD}              Leverage: 1:100{RESET}
-{CYAN}{BOLD}  \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}
-
-  {YELLOW}\U0001f4b0 Pret LIVE:{RESET}          {WHITE}{BOLD}${price:.2f}{RESET}{price_change}
-  {YELLOW}\U0001f550 Ultima actualizare:{RESET} {DIM}{now}{RESET}
-  {YELLOW}\U0001f4e1 Sursa date:{RESET}         {DIM}{self.fetcher.source}{RESET}
-  {YELLOW}\U0001f4ca Tick-uri colectate:{RESET} {DIM}{len(self.fetcher.prices_history)}{RESET}
-
-  {CYAN}\u2500\u2500 INDICATORI TEHNICI \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500{RESET}
-  {WHITE}\U0001f4c8 RSI (14):{RESET}       {BOLD}{ind['rsi']:.2f}{RESET}  [{self.get_rsi_label(ind['rsi'])}]
-  {WHITE}\U0001f4c8 EMA 9:{RESET}          {BOLD}${ind['ema9']:.2f}{RESET}
-  {WHITE}\U0001f4c8 EMA 21:{RESET}         {BOLD}${ind['ema21']:.2f}{RESET}  [{ema_trend}]
-  {WHITE}\U0001f4c8 MACD:{RESET}           {BOLD}{ind['macd']:.4f}{RESET} | Signal: {BOLD}{ind['macd_signal']:.4f}{RESET}
-  {WHITE}\U0001f4c8 Bollinger:{RESET}      Upper: {BOLD}${ind['bb_upper']:.2f}{RESET} | Lower: {BOLD}${ind['bb_lower']:.2f}{RESET}
-  {WHITE}\U0001f4c8 ATR (14):{RESET}       {BOLD}${ind['atr']:.2f}{RESET}
-
-  {CYAN}\u2500\u2500 SEMNAL ACTUAL \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500{RESET}
-  {sig_color}{BOLD}  {sig_icon} RECOMANDARE: {signal}{RESET}""")
+        print("")
+        print(CYAN + BOLD + "  ==============================================" + RESET)
+        print(CYAN + BOLD + "         XAU/USD TRADING BOT" + RESET)
+        print(CYAN + BOLD + "           LIVE PRICE FEED" + RESET)
+        print(CYAN + BOLD + "              Leverage: 1:100" + RESET)
+        print(CYAN + BOLD + "  ==============================================" + RESET)
+        print("")
+        print("  " + YELLOW + "Pret LIVE:" + RESET + "          " + WHITE + BOLD + "$" + f"{price:.2f}" + RESET + price_change)
+        print("  " + YELLOW + "Ultima actualizare:" + RESET + " " + DIM + now + RESET)
+        print("  " + YELLOW + "Sursa date:" + RESET + "         " + DIM + self.fetcher.source + RESET)
+        print("  " + YELLOW + "Tick-uri colectate:" + RESET + " " + DIM + str(len(self.fetcher.prices_history)) + RESET)
+        print("")
+        print("  " + CYAN + "-- INDICATORI TEHNICI ----------------" + RESET)
+        print("  " + WHITE + "RSI (14):" + RESET + "       " + BOLD + f"{ind['rsi']:.2f}" + RESET + "  [" + self.get_rsi_label(ind['rsi']) + "]")
+        print("  " + WHITE + "EMA 9:" + RESET + "          " + BOLD + "$" + f"{ind['ema9']:.2f}" + RESET)
+        print("  " + WHITE + "EMA 21:" + RESET + "         " + BOLD + "$" + f"{ind['ema21']:.2f}" + RESET + "  [" + ema_trend + "]")
+        print("  " + WHITE + "MACD:" + RESET + "           " + BOLD + f"{ind['macd']:.4f}" + RESET + " | Signal: " + BOLD + f"{ind['macd_signal']:.4f}" + RESET)
+        print("  " + WHITE + "Bollinger:" + RESET + "      Upper: " + BOLD + "$" + f"{ind['bb_upper']:.2f}" + RESET + " | Lower: " + BOLD + "$" + f"{ind['bb_lower']:.2f}" + RESET)
+        print("  " + WHITE + "ATR (14):" + RESET + "       " + BOLD + "$" + f"{ind['atr']:.2f}" + RESET)
+        print("")
+        print("  " + CYAN + "-- SEMNAL ACTUAL -------------------------")
+        print("  " + sig_color + BOLD + "  " + sig_icon + " RECOMANDARE: " + signal + RESET)
 
         if signal != "ASTEAPTA":
             if signal == "BUY":
-                print(f"  {WHITE}\U0001f3af Take Profit:{RESET}   {GREEN}{BOLD}${ind['price'] + ind['atr'] * 2:.2f}{RESET}")
-                print(f"  {WHITE}\U0001f6d1 Stop Loss:{RESET}     {RED}{BOLD}${ind['price'] - ind['atr']:.2f}{RESET}")
+                print("  " + WHITE + "Take Profit:" + RESET + "   " + GREEN + BOLD + "$" + f"{ind['price'] + ind['atr'] * 2:.2f}" + RESET)
+                print("  " + WHITE + "Stop Loss:" + RESET + "     " + RED + BOLD + "$" + f"{ind['price'] - ind['atr']:.2f}" + RESET)
             else:
-                print(f"  {WHITE}\U0001f3af Take Profit:{RESET}   {GREEN}{BOLD}${ind['price'] - ind['atr'] * 2:.2f}{RESET}")
-                print(f"  {WHITE}\U0001f6d1 Stop Loss:{RESET}     {RED}{BOLD}${ind['price'] + ind['atr']:.2f}{RESET}")
-            print(f"  {WHITE}\U0001f4ca Putere Semnal:{RESET}  {self.get_strength_bar(strength)}")
+                print("  " + WHITE + "Take Profit:" + RESET + "   " + GREEN + BOLD + "$" + f"{ind['price'] - ind['atr'] * 2:.2f}" + RESET)
+                print("  " + WHITE + "Stop Loss:" + RESET + "     " + RED + BOLD + "$" + f"{ind['price'] + ind['atr']:.2f}" + RESET)
+            print("  " + WHITE + "Putere Semnal:" + RESET + "  " + self.get_strength_bar(strength))
             if reasons:
-                print(f"  {DIM}   Motive: {', '.join(reasons)}{RESET}")
+                print("  " + DIM + "   Motive: " + ", ".join(reasons) + RESET)
         else:
-            print(f"  {DIM}   Niciun semnal clar. Se asteapta confirmari...{RESET}")
+            print("  " + DIM + "   Niciun semnal clar. Se asteapta confirmari..." + RESET)
 
-        print(f"\n  {CYAN}\u2500\u2500 POZITIE DESCHISA \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500{RESET}")
+        print("")
+        print("  " + CYAN + "-- POZITIE DESCHISA ----------------------" + RESET)
         if self.position:
             pos_color = GREEN if self.position == "BUY" else RED
             pnl_color = GREEN if self.pnl >= 0 else RED
             pnl_sign = "+" if self.pnl >= 0 else "-"
             mins = int((datetime.now() - self.entry_time).total_seconds() / 60) if self.entry_time else 0
-            print(f"  {WHITE}\U0001f4cd Tip:{RESET}              {pos_color}{BOLD}{self.position} @ ${self.entry_price:.2f}{RESET}")
-            print(f"  {WHITE}\U0001f3af Take Profit:{RESET}      {GREEN}${self.take_profit:.2f}{RESET}")
-            print(f"  {WHITE}\U0001f6d1 Stop Loss:{RESET}        {RED}${self.stop_loss:.2f}{RESET}")
-            print(f"  {WHITE}\U0001f4b5 Profit/Pierdere:{RESET}  {pnl_color}{BOLD}{pnl_sign}${self.pnl:.2f}{RESET}")
-            print(f"  {WHITE}\u23f1\ufe0f  Deschisa de:{RESET}     {mins} min")
+            print("  " + WHITE + "Tip:" + RESET + "              " + pos_color + BOLD + self.position + " @ $" + f"{self.entry_price:.2f}" + RESET)
+            print("  " + WHITE + "Take Profit:" + RESET + "      " + GREEN + "$" + f"{self.take_profit:.2f}" + RESET)
+            print("  " + WHITE + "Stop Loss:" + RESET + "        " + RED + "$" + f"{self.stop_loss:.2f}" + RESET)
+            print("  " + WHITE + "Profit/Pierdere:" + RESET + "  " + pnl_color + BOLD + pnl_sign + "$" + f"{self.pnl:.2f}" + RESET)
+            print("  " + WHITE + "Deschisa de:" + RESET + "     " + str(mins) + " min")
         else:
-            print(f"  {DIM}   Nicio pozitie deschisa{RESET}")
+            print("  " + DIM + "   Nicio pozitie deschisa" + RESET)
 
-        print(f"\n  {CYAN}\u2500\u2500 ISTORIC SEMNALE \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500{RESET}")
+        print("")
+        print("  " + CYAN + "-- ISTORIC SEMNALE -----------------------" + RESET)
         if self.history:
             for h in self.history[-10:]:
                 print(h)
         else:
-            print(f"  {DIM}   Niciun semnal inca...{RESET}")
+            print("  " + DIM + "   Niciun semnal inca..." + RESET)
 
-        print(f"\n  {CYAN}\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}")
-        print(f"  {RED}{BOLD}\u26a0\ufe0f  ATENTIE: Leverage 1:100 = RISC FOARTE MARE!{RESET}")
-        print(f"  {YELLOW}   Acest bot este DOAR informativ/educational!{RESET}")
-        print(f"  {YELLOW}   NU garanteaza profit. Tranzactioneaza responsabil.{RESET}")
-        print(f"  {DIM}   Apasa Ctrl+C pentru a opri botul.{RESET}")
-        print(f"  {DIM}   Se actualizeaza la fiecare 10 secunde (LIVE)...{RESET}")
+        print("")
+        print("  " + CYAN + "==============================================" + RESET)
+        print("  " + RED + BOLD + "ATENTIE: Leverage 1:100 = RISC FOARTE MARE!" + RESET)
+        print("  " + YELLOW + "   Acest bot este DOAR informativ/educational!" + RESET)
+        print("  " + YELLOW + "   NU garanteaza profit. Tranzactioneaza responsabil." + RESET)
+        print("  " + DIM + "   Apasa Ctrl+C pentru a opri botul." + RESET)
+        print("  " + DIM + "   Se actualizeaza la fiecare 10 secunde (LIVE)..." + RESET)
 
     def display_warmup(self, count, needed):
         os.system('cls' if os.name == 'nt' else 'clear')
-        price_str = f"${self.fetcher.price:.2f}" if self.fetcher.price > 0 else "Se incarca..."
+        price_str = "$" + f"{self.fetcher.price:.2f}" if self.fetcher.price > 0 else "Se incarca..."
         pct = int((count / needed) * 100)
         bar_filled = int(pct / 5)
-        bar = "\u2588" * bar_filled + "\u2591" * (20 - bar_filled)
+        bar = "#" * bar_filled + "-" * (20 - bar_filled)
 
-        errors_str = ""
+        print("")
+        print(CYAN + BOLD + "  ==============================================" + RESET)
+        print(CYAN + BOLD + "         XAU/USD TRADING BOT" + RESET)
+        print(CYAN + BOLD + "           LIVE PRICE FEED" + RESET)
+        print(CYAN + BOLD + "  ==============================================" + RESET)
+        print("")
+        print("  " + YELLOW + "Se colecteaza date LIVE pentru indicatori..." + RESET)
+        print("")
+        print("  " + WHITE + "Pret curent:" + RESET + "  " + BOLD + price_str + RESET)
+        print("  " + WHITE + "Sursa:" + RESET + "        " + DIM + (self.fetcher.source if self.fetcher.source else "Se cauta...") + RESET)
+        print("  " + WHITE + "Progres:" + RESET + "      [" + bar + "] " + str(pct) + "%")
+        print("  " + WHITE + "Tick-uri:" + RESET + "     " + str(count) + "/" + str(needed))
+        print("")
+        print("  " + DIM + "Se colecteaza minimum " + str(needed) + " puncte de pret" + RESET)
+        print("  " + DIM + "pentru calculul indicatorilor tehnici..." + RESET)
+        print("  " + DIM + "Timp estimat: ~" + str(max(0, (needed - count) * 10)) + " secunde" + RESET)
+
         if self.fetcher.errors:
-            errors_str = f"\n  {RED}Erori la surse:{RESET}"
+            print("")
+            print("  " + RED + "Erori la surse:" + RESET)
             for err in self.fetcher.errors[-3:]:
-                errors_str += f"\n  {DIM}  - {err}{RESET}"
-
-        print(f"""
-{CYAN}{BOLD}  \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}
-{CYAN}{BOLD}         \U0001f3c6  XAU/USD TRADING BOT  \U0001f3c6{RESET}
-{CYAN}{BOLD}           \u26a1 LIVE PRICE FEED \u26a1{RESET}
-{CYAN}{BOLD}  \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}
-
-  {YELLOW}\U0001f4e1 Se colecteaza date LIVE pentru indicatori...{RESET}
-
-  {WHITE}\U0001f4b0 Pret curent:{RESET}  {BOLD}{price_str}{RESET}
-  {WHITE}\U0001f4e1 Sursa:{RESET}        {DIM}{self.fetcher.source if self.fetcher.source else 'Se cauta...'}{RESET}
-  {WHITE}\U0001f4ca Progres:{RESET}      [{bar}] {pct}%
-  {WHITE}\U0001f4c8 Tick-uri:{RESET}     {count}/{needed}
-
-  {DIM}Se colecteaza minimum {needed} puncte de pret{RESET}
-  {DIM}pentru calculul indicatorilor tehnici...{RESET}
-  {DIM}Timp estimat: ~{max(0, (needed - count) * 10)} secunde{RESET}
-{errors_str}
-"""}
+                print("  " + DIM + "  - " + str(err) + RESET)
 
     def display_no_price(self):
         os.system('cls' if os.name == 'nt' else 'clear')
-        errors_str = ""
+        print("")
+        print("  " + RED + "Nu s-a putut obtine pretul din nicio sursa." + RESET)
+        print("  " + YELLOW + "Verificati conexiunea la internet." + RESET)
+        print("  " + DIM + "Se reincearca in 5 secunde..." + RESET)
+        print("")
+        print("  " + CYAN + "Surse incercate:" + RESET)
+        print("  " + DIM + "  1. GiaVang.now (real-time)" + RESET)
+        print("  " + DIM + "  2. GoldPrice.org (real-time)" + RESET)
+        print("  " + DIM + "  3. Metals.live (real-time)" + RESET)
+        print("  " + DIM + "  4. FreeGoldAPI.com (daily)" + RESET)
+        print("  " + DIM + "  5. Frankfurter API (daily)" + RESET)
+        print("  " + DIM + "  6. ExchangeRate-API (daily)" + RESET)
+
         if self.fetcher.errors:
-            errors_str = f"\n  {YELLOW}Erori de la surse:{RESET}"
+            print("")
+            print("  " + YELLOW + "Erori de la surse:" + RESET)
             for err in self.fetcher.errors:
-                errors_str += f"\n  {DIM}  - {err}{RESET}"
-
-        print(f"""
-  {RED}\u26a0\ufe0f  Nu s-a putut obtine pretul din nicio sursa.{RESET}
-  {YELLOW}Verificati conexiunea la internet.{RESET}
-  {DIM}Se reincearca in 5 secunde...{RESET}
-
-  {CYAN}Surse incercate:{RESET}
-  {DIM}  1. GiaVang.now (real-time){RESET}
-  {DIM}  2. GoldPrice.org (real-time){RESET}
-  {DIM}  3. Metals.live (real-time){RESET}
-  {DIM}  4. FreeGoldAPI.com (daily){RESET}
-  {DIM}  5. Frankfurter API (daily){RESET}
-  {DIM}  6. ExchangeRate-API (daily){RESET}
-{errors_str}
-"""}
+                print("  " + DIM + "  - " + str(err) + RESET)
 
     def run(self):
         os.system('cls' if os.name == 'nt' else 'clear')
-        print(f"""
-{CYAN}{BOLD}  \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}
-{CYAN}{BOLD}         \U0001f3c6  XAU/USD TRADING BOT  \U0001f3c6{RESET}
-{CYAN}{BOLD}           \u26a1 LIVE PRICE FEED \u26a1{RESET}
-{CYAN}{BOLD}  \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}
+        print("")
+        print(CYAN + BOLD + "  ==============================================" + RESET)
+        print(CYAN + BOLD + "         XAU/USD TRADING BOT" + RESET)
+        print(CYAN + BOLD + "           LIVE PRICE FEED" + RESET)
+        print(CYAN + BOLD + "  ==============================================" + RESET)
+        print("")
+        print("  " + YELLOW + "Se conecteaza la sursele de date LIVE..." + RESET)
+        print("  " + DIM + "Se incearca 6 surse gratuite diferite." + RESET)
+        print("  " + DIM + "Asteapta cateva secunde." + RESET)
+        print("")
 
-  {YELLOW}Se conecteaza la sursele de date LIVE...{RESET}
-  {DIM}Se incearca 6 surse gratuite diferite.{RESET}
-  {DIM}Asteapta cateva secunde.{RESET}
-"""
-        
         MIN_TICKS = 35
 
         while True:
@@ -559,8 +550,9 @@ class TradingBot:
 
                 ind = self.calculate_indicators(df)
                 if ind is None:
-                    print(f"\n  {RED}\u26a0\ufe0f  Eroare la calculul indicatorilor.{RESET}")
-                    print(f"  {DIM}Se reincearca in 10 secunde...{RESET}")
+                    print("")
+                    print("  " + RED + "Eroare la calculul indicatorilor." + RESET)
+                    print("  " + DIM + "Se reincearca in 10 secunde..." + RESET)
                     time.sleep(10)
                     continue
 
@@ -572,26 +564,31 @@ class TradingBot:
                 time.sleep(10)
 
             except KeyboardInterrupt:
-                print(f"\n\n  {YELLOW}Bot oprit de utilizator. La revedere! \U0001f44b{RESET}\n")
+                print("")
+                print("")
+                print("  " + YELLOW + "Bot oprit de utilizator. La revedere!" + RESET)
+                print("")
                 sys.exit(0)
             except Exception as e:
-                print(f"\n  {RED}\u26a0\ufe0f  Eroare: {e}{RESET}")
-                print(f"  {DIM}Se reincearca in 10 secunde...{RESET}")
+                print("")
+                print("  " + RED + "Eroare: " + str(e) + RESET)
+                print("  " + DIM + "Se reincearca in 10 secunde..." + RESET)
                 time.sleep(10)
 
 
 if __name__ == '__main__':
-    print(f"{CYAN}{BOLD}")
-    print(f"  \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}")
-    print(f"       DISCLAIMER / AVERTISMENT IMPORTANT")
-    print(f"  \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}")
-    print(f"  {YELLOW}Acest bot este DOAR in scop educational/informativ.{RESET}")
-    print(f"  {YELLOW}NU constituie sfat financiar sau de investitii.{RESET}")
-    print(f"  {YELLOW}Tranzactionarea cu leverage 1:100 implica{RESET}")
-    print(f"  {YELLOW}RISC FOARTE MARE de pierdere a capitalului.{RESET}")
-    print(f"  {RED}{BOLD}  Foloseste-l pe propria raspundere!{RESET}")
-    print(f"  {CYAN}\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}")
-    print(f"\n  {WHITE}Apasa ENTER pentru a porni botul...{RESET}")
+    print(CYAN + BOLD)
+    print("  ================================================")
+    print("       DISCLAIMER / AVERTISMENT IMPORTANT")
+    print("  ================================================" + RESET)
+    print("  " + YELLOW + "Acest bot este DOAR in scop educational/informativ." + RESET)
+    print("  " + YELLOW + "NU constituie sfat financiar sau de investitii." + RESET)
+    print("  " + YELLOW + "Tranzactionarea cu leverage 1:100 implica" + RESET)
+    print("  " + YELLOW + "RISC FOARTE MARE de pierdere a capitalului." + RESET)
+    print("  " + RED + BOLD + "  Foloseste-l pe propria raspundere!" + RESET)
+    print("  " + CYAN + "================================================" + RESET)
+    print("")
+    print("  " + WHITE + "Apasa ENTER pentru a porni botul..." + RESET)
     input()
     bot = TradingBot()
     bot.run()
