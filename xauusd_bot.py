@@ -21,7 +21,9 @@ except ImportError:
 # ═══════════════════════════════════════════
 # AUTO-TRADING CONFIGURATION
 # ═══════════════════════════════════════════
-AUTO_TRADE_ENABLED = True      # True = plasează ordine automat, False = doar semnale
+AUTO_TRADE_ENABLED = False     # False = confirmare manuala, True = plasare automata
+CONFIRM_BEFORE_TRADE = True    # True = botul intreaba inainte de fiecare tranzactie
+ASK_COOLDOWN = 30              # Secunde intre intrebari consecutive
 LOT_SIZE = 0.01                # Dimensiunea lotului (0.01 = micro lot, minim pentru demo)
 STOP_LOSS_PIPS = 300           # Stop Loss în pips (puncte) - ex: 300 = ~3$ pe XAUUSD
 TAKE_PROFIT_PIPS = 500         # Take Profit în pips (puncte) - ex: 500 = ~5$ pe XAUUSD
@@ -178,6 +180,10 @@ class TradingBot:
         # Auto-trading state
         self.last_trade_time = None       # timestamp of last executed trade
         self.last_trade_info = None       # dict with info about last trade
+        # Confirmation cooldown state
+        self.last_ask_time = None         # timestamp of last confirmation prompt
+        self.last_no_signal = None        # last signal type user declined ("BUY"/"SELL")
+        self.last_no_time = None          # timestamp when user said "no"
 
     def calculate_indicators(self, df):
         """Calculeaza indicatori tehnici pe date REALE de la MT5"""
@@ -356,7 +362,7 @@ class TradingBot:
 
     def execute_trade(self, signal, price, strength=0):
         """Plasează un ordin BUY sau SELL pe MT5 cu toate verificările de siguranță"""
-        if not AUTO_TRADE_ENABLED:
+        if not AUTO_TRADE_ENABLED and not CONFIRM_BEFORE_TRADE:
             return None
 
         # Verificare scor semnal > 60%
@@ -540,14 +546,13 @@ class TradingBot:
         print(CYAN + BOLD + "            Leverage: 1:100" + RESET)
         print(CYAN + BOLD + "  ==============================================" + RESET)
         print("")
-        print("  " + YELLOW + "Bid:" + RESET + "                " + WHITE + BOLD + "$" + f"{bid:.2f}" + RESET + price_change)
-        print("  " + YELLOW + "Ask:" + RESET + "                " + WHITE + BOLD + "$" + f"{ask:.2f}" + RESET)
-        print("  " + YELLOW + "Spread:" + RESET + "             " + DIM + str(spread_pts) + " puncte ($" + f"{spread_usd:.2f}" + ")" + RESET)
+        print("  " + YELLOW + BOLD + "💰 PRET LIVE (MT5):" + RESET)
+        print("     " + YELLOW + "BID:" + RESET + " " + WHITE + BOLD + "$" + f"{bid:.2f}" + RESET + price_change + "  |  " + YELLOW + "ASK:" + RESET + " " + WHITE + BOLD + "$" + f"{ask:.2f}" + RESET)
+        print("     " + YELLOW + "Spread:" + RESET + " " + DIM + "$" + f"{spread_usd:.2f}" + " (" + str(spread_pts) + " pips)" + RESET)
         print("  " + YELLOW + "Ultima actualizare:" + RESET + " " + DIM + now + RESET)
         print("  " + YELLOW + "Conexiune MT5:" + RESET + "      " + GREEN + BOLD + "Conectat" + RESET)
         print("  " + YELLOW + "Simbol:" + RESET + "             " + DIM + self.mt5.symbol + RESET)
         print("  " + YELLOW + "Tick-uri:" + RESET + "           " + DIM + str(self.tick_count) + RESET)
-        print("")
         print("  " + CYAN + "-- INDICATORI TEHNICI (M1 real) ----------" + RESET)
         print("  " + WHITE + "RSI (14):" + RESET + "       " + BOLD + f"{ind['rsi']:.2f}" + RESET + "  [" + self.get_rsi_label(ind['rsi']) + "]")
         print("  " + WHITE + "EMA 9:" + RESET + "          " + BOLD + "$" + f"{ind['ema9']:.2f}" + RESET)
@@ -596,14 +601,14 @@ class TradingBot:
         else:
             print("  " + DIM + "   Niciun semnal inca..." + RESET)
 
-        # ── AUTO-TRADING STATUS SECTION ──────────────────────────────────────
+        # ── TRADING MODE STATUS SECTION ──────────────────────────────────────
         print("")
         print("  " + CYAN + "==============================================" + RESET)
         if AUTO_TRADE_ENABLED:
-            at_label = GREEN + BOLD + "ACTIV" + RESET
+            at_label = GREEN + BOLD + "ACTIV (automat)" + RESET
         else:
-            at_label = YELLOW + BOLD + "INACTIV (doar semnale)" + RESET
-        print("  " + BOLD + "  AUTO-TRADING: " + at_label)
+            at_label = YELLOW + BOLD + "CONFIRMARE MANUALA" + RESET
+        print("  " + BOLD + "  MOD TRADING: " + at_label)
 
         open_pos = self.get_open_positions()
         total_pl = sum(p.profit for p in open_pos) if open_pos else 0.0
@@ -674,6 +679,60 @@ class TradingBot:
         print("")
         print("  " + DIM + "Apasa ENTER pentru a reincerca sau Ctrl+C pentru iesire..." + RESET)
 
+    def ask_confirmation(self, signal, tick, ind, strength):
+        """Afiseaza mesajul de confirmare si asteapta raspunsul utilizatorului.
+        Returneaza True daca utilizatorul confirma, False altfel."""
+        now_ts = time.time()
+
+        # Cooldown general intre intrebari (ASK_COOLDOWN secunde)
+        if self.last_ask_time is not None and (now_ts - self.last_ask_time) < ASK_COOLDOWN:
+            return False
+
+        # Cooldown dupa "nu" pentru acelasi tip de semnal (60 secunde)
+        if (self.last_no_signal == signal and
+                self.last_no_time is not None and
+                (now_ts - self.last_no_time) < 60):
+            return False
+
+        # Prețul corect de pe MT5
+        if signal == "BUY":
+            price_label = "Pret ASK"
+            price_val = tick.ask
+            sig_color = GREEN
+            sig_icon = "🟢 SEMNAL BUY DETECTAT!"
+        elif signal == "SELL":
+            price_label = "Pret BID"
+            price_val = tick.bid
+            sig_color = RED
+            sig_icon = "🔴 SEMNAL SELL DETECTAT!"
+        else:
+            return False
+
+        rsi = ind.get('rsi', 0)
+        ema_trend = "BULLISH" if ind.get('ema9', 0) > ind.get('ema21', 0) else "BEARISH"
+        max_conditions = 4
+        score_pct = int((strength / max_conditions) * 100)
+
+        self.last_ask_time = now_ts
+
+        # Afiseaza mesajul de confirmare
+        print("")
+        print(sig_color + BOLD + "  ═══════════════════════════════════════════════" + RESET)
+        print(sig_color + BOLD + "  " + sig_icon + RESET)
+        print(sig_color + "  " + price_label + ": $" + f"{price_val:.2f}" + " (exact de pe MT5)" + RESET)
+        print(sig_color + "  Scor: " + str(score_pct) + "% | RSI: " + f"{rsi:.1f}" + " | Trend: " + ema_trend + RESET)
+        print("")
+        answer = input(sig_color + BOLD + "  Vrei sa dau " + signal + "? (da/nu): " + RESET).strip().lower()
+        print(sig_color + BOLD + "  ═══════════════════════════════════════════════" + RESET)
+        print("")
+
+        if answer in ("da", "d", "y", "yes"):
+            return True
+        else:
+            self.last_no_signal = signal
+            self.last_no_time = now_ts
+            return False
+
     def run(self):
         """Loop-ul principal al botului"""
         os.system('cls' if os.name == 'nt' else 'clear')
@@ -709,6 +768,14 @@ class TradingBot:
 
         print("  " + GREEN + "Simbol gasit: " + sym + RESET)
         print("")
+        if CONFIRM_BEFORE_TRADE and not AUTO_TRADE_ENABLED:
+            print("  " + CYAN + BOLD + "  ⚙️  MOD: CONFIRMARE MANUALA" + RESET)
+            print("  " + WHITE + "  Botul va cere confirmare inainte de fiecare tranzactie." + RESET)
+            print("  " + WHITE + "  Nu va cumpara sau vinde nimic fara acordul tau!" + RESET)
+        elif AUTO_TRADE_ENABLED:
+            print("  " + YELLOW + BOLD + "  ⚙️  MOD: AUTO-TRADING ACTIV" + RESET)
+            print("  " + WHITE + "  Botul va plasa ordine automat!" + RESET)
+        print("")
         print("  " + YELLOW + "Se porneste feed-ul LIVE..." + RESET)
         time.sleep(1)
 
@@ -732,9 +799,15 @@ class TradingBot:
                             signal, strength, reasons = self.get_signal(ind)
                             self.cached_signal = (signal, strength, reasons)
                             self.update_position(signal, strength, tick.bid, ind['atr'])
-                            # Auto-trading: execută ordin dacă semnalul este BUY sau SELL
-                            if signal in ("BUY", "SELL"):
-                                self.execute_trade(signal, tick.bid, strength)
+                            # Sistem de confirmare manuala sau auto-trading
+                            if signal in ("BUY", "SELL") and strength >= 3:
+                                trade_price = tick.ask if signal == "BUY" else tick.bid
+                                if AUTO_TRADE_ENABLED:
+                                    self.execute_trade(signal, trade_price, strength)
+                                elif CONFIRM_BEFORE_TRADE:
+                                    confirmed = self.ask_confirmation(signal, tick, ind, strength)
+                                    if confirmed:
+                                        self.execute_trade(signal, trade_price, strength)
                     self.last_indicator_calc = current_time
 
                 if self.cached_indicators is not None:
