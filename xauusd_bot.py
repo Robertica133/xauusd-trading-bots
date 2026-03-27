@@ -3,21 +3,6 @@ import sys
 import time
 from datetime import datetime
 
-try:
-    import requests
-    import pandas as pd
-    from ta.momentum import RSIIndicator
-    from ta.trend import EMAIndicator, MACD
-    from ta.volatility import BollingerBands, AverageTrueRange
-except ImportError:
-    print("Se instaleaza dependentele necesare...")
-    os.system("pip install pandas ta requests --quiet")
-    import requests
-    import pandas as pd
-    from ta.momentum import RSIIndicator
-    from ta.trend import EMAIndicator, MACD
-    from ta.volatility import BollingerBands, AverageTrueRange
-
 # Enable ANSI colors on Windows
 os.system('')
 
@@ -32,175 +17,148 @@ DIM = "\033[2m"
 RESET = "\033[0m"
 MAGENTA = "\033[95m"
 
+try:
+    import pandas as pd
+    from ta.momentum import RSIIndicator
+    from ta.trend import EMAIndicator, MACD
+    from ta.volatility import BollingerBands, AverageTrueRange
+except ImportError:
+    print("Se instaleaza dependentele necesare...")
+    os.system("pip install pandas ta MetaTrader5 --quiet")
+    import pandas as pd
+    from ta.momentum import RSIIndicator
+    from ta.trend import EMAIndicator, MACD
+    from ta.volatility import BollingerBands, AverageTrueRange
 
-class LivePriceFetcher:
-    """Fetches LIVE XAU/USD price from multiple free API sources (no API key needed)"""
+# Try to import MetaTrader5 (Windows only)
+MT5_AVAILABLE = False
+try:
+    import MetaTrader5 as mt5
+    MT5_AVAILABLE = True
+except ImportError:
+    pass
+
+# Default symbol — will be updated during initialization if a variant is found
+SYMBOL = "XAUUSD"
+# Candidate symbols in order of preference
+SYMBOL_CANDIDATES = ["XAUUSD", "GOLD", "XAUUSDm", "XAUUSD."]
+
+# How often (seconds) to recalculate technical indicators
+INDICATOR_REFRESH_SECS = 3
+# How often (seconds) to refresh the 200-candle dataset from MT5
+CANDLE_REFRESH_SECS = 5
+
+
+class MT5DataFetcher:
+    """Fetches real-time XAU/USD price and OHLC data directly from MetaTrader 5."""
 
     def __init__(self):
-        self.price = 0
-        self.prev_price = 0
-        self.prices_history = []
-        self.last_update = None
-        self.source = ""
-        self.errors = []
+        self.bid = 0.0
+        self.ask = 0.0
+        self.prev_bid = 0.0
+        self.spread_pts = 0       # spread in broker points (derived from symbol_info().point)
+        self._point = 0.01        # default fallback; overwritten from symbol_info on connect
+        self.last_tick_time = None
+        self.connected = False
+        self.symbol = SYMBOL
+        self.candles_count = 0
+        self._df = None
 
-    def fetch_source_1(self):
-        """Source 1: GiaVang.now - real-time XAU/USD, no key needed"""
-        try:
-            url = "https://giavang.now/api/prices?type=XAUUSD"
-            resp = requests.get(url, timeout=10)
-            if resp.status_code == 200:
-                data = resp.json()
-                if data.get('success') and 'data' in data and len(data['data']) > 0:
-                    item = data['data'][0]
-                    price = float(item.get('buy', 0) or item.get('sell', 0))
-                    if price > 1000:
-                        return price, "GiaVang.now"
-        except Exception as e:
-            self.errors.append(f"GiaVang: {e}")
-        return None, None
+    # ------------------------------------------------------------------
+    # Connection helpers
+    # ------------------------------------------------------------------
 
-    def fetch_source_2(self):
-        """Source 2: GoldPrice.org data feed - real-time"""
-        try:
-            url = "https://data-asg.goldprice.org/dbXRates/USD"
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Accept': 'application/json',
-                'Referer': 'https://goldprice.org/',
-            }
-            resp = requests.get(url, headers=headers, timeout=10)
-            if resp.status_code == 200:
-                data = resp.json()
-                if 'items' in data and len(data['items']) > 0:
-                    gold_price = data['items'][0].get('xauPrice', 0)
-                    if gold_price and float(gold_price) > 1000:
-                        return float(gold_price), "GoldPrice.org"
-        except Exception as e:
-            self.errors.append(f"GoldPrice: {e}")
-        return None, None
+    def initialize(self):
+        """Initialize MT5 connection and find the correct XAUUSD symbol."""
+        global SYMBOL
+        if not MT5_AVAILABLE:
+            return False
+        if not mt5.initialize():
+            return False
+        for candidate in SYMBOL_CANDIDATES:
+            info = mt5.symbol_info(candidate)
+            if info is not None:
+                if not info.visible:
+                    mt5.symbol_select(candidate, True)
+                SYMBOL = candidate
+                self.symbol = candidate
+                # Use the broker's actual point size for spread calculation
+                if info.point and info.point > 0:
+                    self._point = info.point
+                self.connected = True
+                return True
+        mt5.shutdown()
+        return False
 
-    def fetch_source_3(self):
-        """Source 3: Metals.live API - spot gold"""
-        try:
-            url = "https://api.metals.live/v1/spot/gold"
-            resp = requests.get(url, timeout=10)
-            if resp.status_code == 200:
-                data = resp.json()
-                if isinstance(data, list) and len(data) > 0:
-                    price = float(data[0].get('price', 0))
-                    if price > 1000:
-                        return price, "Metals.live"
-        except Exception as e:
-            self.errors.append(f"Metals.live: {e}")
-        return None, None
+    def shutdown(self):
+        if MT5_AVAILABLE and self.connected:
+            mt5.shutdown()
 
-    def fetch_source_4(self):
-        """Source 4: FreeGoldAPI.com - daily gold price, no key"""
-        try:
-            url = "https://freegoldapi.com/data/latest.json"
-            resp = requests.get(url, timeout=10)
-            if resp.status_code == 200:
-                data = resp.json()
-                if isinstance(data, list) and len(data) > 0:
-                    latest = data[-1]
-                    price = float(latest.get('price', 0))
-                    if price > 1000:
-                        return price, "FreeGoldAPI"
-                elif isinstance(data, dict) and 'price' in data:
-                    price = float(data['price'])
-                    if price > 1000:
-                        return price, "FreeGoldAPI"
-        except Exception as e:
-            self.errors.append(f"FreeGoldAPI: {e}")
-        return None, None
+    # ------------------------------------------------------------------
+    # Live tick
+    # ------------------------------------------------------------------
 
-    def fetch_source_5(self):
-        """Source 5: Frankfurter API - daily XAU/USD rate"""
-        try:
-            url = "https://api.frankfurter.app/latest?from=XAU&to=USD"
-            resp = requests.get(url, timeout=10)
-            if resp.status_code == 200:
-                data = resp.json()
-                if 'rates' in data and 'USD' in data['rates']:
-                    price = float(data['rates']['USD'])
-                    if price > 1000:
-                        return price, "Frankfurter"
-        except Exception as e:
-            self.errors.append(f"Frankfurter: {e}")
-        return None, None
+    def get_tick(self):
+        """Fetch the latest Bid/Ask tick. Returns True on success."""
+        if not self.connected:
+            return False
+        tick = mt5.symbol_info_tick(self.symbol)
+        if tick is None:
+            return False
+        self.prev_bid = self.bid if self.bid > 0 else tick.bid
+        self.bid = tick.bid
+        self.ask = tick.ask
+        # Spread in broker points using the symbol's actual point size
+        raw_spread = round((self.ask - self.bid) / self._point)
+        self.spread_pts = max(raw_spread, 0)
+        self.last_tick_time = datetime.fromtimestamp(tick.time)
+        return True
 
-    def fetch_source_6(self):
-        """Source 6: Exchange Rate API - XAU base"""
-        try:
-            url = "https://open.er-api.com/v6/latest/XAU"
-            resp = requests.get(url, timeout=10)
-            if resp.status_code == 200:
-                data = resp.json()
-                if 'rates' in data and 'USD' in data['rates']:
-                    price = float(data['rates']['USD'])
-                    if price > 1000:
-                        return price, "ExchangeRate-API"
-        except Exception as e:
-            self.errors.append(f"ER-API: {e}")
-        return None, None
+    # ------------------------------------------------------------------
+    # OHLC candles
+    # ------------------------------------------------------------------
 
-    def get_live_price(self):
-        """Try all sources in order until one works"""
-        self.errors = []
-        sources = [
-            self.fetch_source_1,
-            self.fetch_source_2,
-            self.fetch_source_3,
-            self.fetch_source_4,
-            self.fetch_source_5,
-            self.fetch_source_6,
-        ]
-        for source_func in sources:
-            price, source_name = source_func()
-            if price and price > 1000:
-                self.prev_price = self.price if self.price > 0 else price
-                self.price = price
-                self.source = source_name
-                self.last_update = datetime.now()
-                variation = max(abs(price - self.prev_price), 0.50)
-                self.prices_history.append({
-                    'time': datetime.now(),
-                    'Close': price,
-                    'High': price + variation * 0.3,
-                    'Low': price - variation * 0.3,
-                    'Open': self.prev_price if self.prev_price > 0 else price,
-                })
-                if len(self.prices_history) > 300:
-                    self.prices_history = self.prices_history[-300:]
-                return price
-        return None
+    def update_candles(self):
+        """Fetch the latest 200 M1 candles from MT5. Returns True on success."""
+        if not self.connected:
+            return False
+        rates = mt5.copy_rates_from_pos(self.symbol, mt5.TIMEFRAME_M1, 0, 200)
+        if rates is None or len(rates) < 35:
+            return False
+        df = pd.DataFrame(rates)
+        df['time'] = pd.to_datetime(df['time'], unit='s')
+        df = df.rename(columns={
+            'open': 'Open', 'high': 'High', 'low': 'Low',
+            'close': 'Close', 'tick_volume': 'Volume'
+        })
+        df.set_index('time', inplace=True)
+        self._df = df
+        self.candles_count = len(df)
+        return True
 
     def get_dataframe(self):
-        """Convert collected price history to a pandas DataFrame"""
-        if len(self.prices_history) < 30:
-            return None
-        df = pd.DataFrame(self.prices_history)
-        df.set_index('time', inplace=True)
-        return df
-
-    def get_error_log(self):
-        return self.errors
+        return self._df
 
 
 class TradingBot:
     def __init__(self):
         self.position = None
-        self.entry_price = 0
-        self.take_profit = 0
-        self.stop_loss = 0
+        self.entry_price = 0.0
+        self.take_profit = 0.0
+        self.stop_loss = 0.0
         self.entry_time = None
         self.history = []
-        self.current_price = 0
-        self.pnl = 0
-        self.fetcher = LivePriceFetcher()
-        self.warmup_done = False
-        self.tick_count = 0
+        self.current_price = 0.0
+        self.pnl = 0.0
+        self.fetcher = MT5DataFetcher()
+        self._last_indicator_calc = 0.0
+        self._last_candle_refresh = 0.0
+        self._cached_indicators = None
+        self._cached_signal = ("ASTEAPTA", 0, [])
+
+    # ------------------------------------------------------------------
+    # Technical indicators
+    # ------------------------------------------------------------------
 
     def calculate_indicators(self, df):
         indicators = {}
@@ -232,7 +190,6 @@ class TradingBot:
 
             atr_ind = AverageTrueRange(high=high, low=low, close=close, window=14)
             indicators['atr'] = atr_ind.average_true_range().iloc[-1]
-
             if indicators['atr'] < 1.0:
                 indicators['atr'] = max(indicators['atr'], close.iloc[-1] * 0.005)
 
@@ -240,6 +197,10 @@ class TradingBot:
         except Exception:
             return None
         return indicators
+
+    # ------------------------------------------------------------------
+    # Signal generation
+    # ------------------------------------------------------------------
 
     def get_signal(self, ind):
         buy_conditions = 0
@@ -292,6 +253,10 @@ class TradingBot:
 
         return signal, strength, reasons
 
+    # ------------------------------------------------------------------
+    # Position management
+    # ------------------------------------------------------------------
+
     def update_position(self, signal, strength, ind):
         price = ind['price']
         atr = ind['atr']
@@ -329,7 +294,7 @@ class TradingBot:
             self.position = signal
             self.entry_price = price
             self.entry_time = now
-            self.pnl = 0
+            self.pnl = 0.0
             if signal == "BUY":
                 self.take_profit = price + atr * 2
                 self.stop_loss = price - atr * 1
@@ -341,6 +306,10 @@ class TradingBot:
 
         if len(self.history) > 10:
             self.history = self.history[-10:]
+
+    # ------------------------------------------------------------------
+    # Display helpers
+    # ------------------------------------------------------------------
 
     def get_strength_bar(self, strength):
         filled = strength
@@ -369,14 +338,26 @@ class TradingBot:
         else:
             return CYAN + "Neutru" + RESET
 
+    # ------------------------------------------------------------------
+    # Main display
+    # ------------------------------------------------------------------
+
     def display(self, ind, signal, strength, reasons):
         os.system('cls' if os.name == 'nt' else 'clear')
-        price = ind['price']
-        now = datetime.now().strftime('%H:%M:%S')
+        bid = self.fetcher.bid
+        ask = self.fetcher.ask
+        spread_pts = self.fetcher.spread_pts
+        spread_usd = spread_pts * self.fetcher._point
+
+        tick_time_str = (
+            self.fetcher.last_tick_time.strftime('%H:%M:%S.') +
+            f"{self.fetcher.last_tick_time.microsecond // 1000:03d}"
+            if self.fetcher.last_tick_time else "--:--:--.---"
+        )
 
         price_change = ""
-        if self.fetcher.prev_price > 0 and self.fetcher.prev_price != price:
-            diff = price - self.fetcher.prev_price
+        if self.fetcher.prev_bid > 0 and self.fetcher.prev_bid != bid:
+            diff = bid - self.fetcher.prev_bid
             if diff > 0:
                 price_change = " " + GREEN + "^ +$" + f"{diff:.2f}" + RESET
             elif diff < 0:
@@ -392,21 +373,25 @@ class TradingBot:
             sig_color = WHITE
             sig_icon = "[---]"
 
+        conn_str = GREEN + "✓ Conectat" + RESET
         ema_trend = GREEN + "Bullish ^" + RESET if ind['ema9'] > ind['ema21'] else RED + "Bearish v" + RESET
 
         print("")
         print(CYAN + BOLD + "  ==============================================" + RESET)
-        print(CYAN + BOLD + "         XAU/USD TRADING BOT" + RESET)
-        print(CYAN + BOLD + "           LIVE PRICE FEED" + RESET)
-        print(CYAN + BOLD + "              Leverage: 1:100" + RESET)
+        print(CYAN + BOLD + "       XAU/USD TRADING BOT - MT5 LIVE" + RESET)
+        print(CYAN + BOLD + "          REAL-TIME TICK DATA" + RESET)
+        print(CYAN + BOLD + "            Leverage: 1:100" + RESET)
         print(CYAN + BOLD + "  ==============================================" + RESET)
         print("")
-        print("  " + YELLOW + "Pret LIVE:" + RESET + "          " + WHITE + BOLD + "$" + f"{price:.2f}" + RESET + price_change)
-        print("  " + YELLOW + "Ultima actualizare:" + RESET + " " + DIM + now + RESET)
-        print("  " + YELLOW + "Sursa date:" + RESET + "         " + DIM + self.fetcher.source + RESET)
-        print("  " + YELLOW + "Tick-uri colectate:" + RESET + " " + DIM + str(len(self.fetcher.prices_history)) + RESET)
+        print("  " + YELLOW + "Bid:" + RESET + "                " + WHITE + BOLD + "$" + f"{bid:.2f}" + RESET + price_change)
+        print("  " + YELLOW + "Ask:" + RESET + "                " + WHITE + BOLD + "$" + f"{ask:.2f}" + RESET)
+        print("  " + YELLOW + "Spread:" + RESET + "             " + DIM + str(spread_pts) + " puncte ($" + f"{spread_usd:.2f}" + ")" + RESET)
+        print("  " + YELLOW + "Ultima actualizare:" + RESET + " " + DIM + tick_time_str + RESET)
+        print("  " + YELLOW + "Conexiune MT5:" + RESET + "      " + conn_str)
+        print("  " + YELLOW + "Simbol:" + RESET + "             " + DIM + self.fetcher.symbol + RESET)
+        print("  " + YELLOW + "Candele M1:" + RESET + "         " + DIM + str(self.fetcher.candles_count) + RESET)
         print("")
-        print("  " + CYAN + "-- INDICATORI TEHNICI ----------------" + RESET)
+        print("  " + CYAN + "-- INDICATORI TEHNICI (M1 real) ----------" + RESET)
         print("  " + WHITE + "RSI (14):" + RESET + "       " + BOLD + f"{ind['rsi']:.2f}" + RESET + "  [" + self.get_rsi_label(ind['rsi']) + "]")
         print("  " + WHITE + "EMA 9:" + RESET + "          " + BOLD + "$" + f"{ind['ema9']:.2f}" + RESET)
         print("  " + WHITE + "EMA 21:" + RESET + "         " + BOLD + "$" + f"{ind['ema21']:.2f}" + RESET + "  [" + ema_trend + "]")
@@ -459,121 +444,132 @@ class TradingBot:
         print("  " + YELLOW + "   Acest bot este DOAR informativ/educational!" + RESET)
         print("  " + YELLOW + "   NU garanteaza profit. Tranzactioneaza responsabil." + RESET)
         print("  " + DIM + "   Apasa Ctrl+C pentru a opri botul." + RESET)
-        print("  " + DIM + "   Se actualizeaza la fiecare 10 secunde (LIVE)..." + RESET)
+        print("  " + DIM + "   Se actualizeaza LIVE la fiecare 100ms..." + RESET)
 
-    def display_warmup(self, count, needed):
+    def display_no_mt5(self):
+        """Shown when MT5 is not installed or not reachable."""
         os.system('cls' if os.name == 'nt' else 'clear')
-        price_str = "$" + f"{self.fetcher.price:.2f}" if self.fetcher.price > 0 else "Se incarca..."
-        pct = int((count / needed) * 100)
+        print("")
+        print(CYAN + BOLD + "  ==============================================" + RESET)
+        print(CYAN + BOLD + "       XAU/USD TRADING BOT - MT5 LIVE" + RESET)
+        print(CYAN + BOLD + "  ==============================================" + RESET)
+        print("")
+        print("  " + RED + BOLD + "  [!] MetaTrader 5 nu este disponibil!" + RESET)
+        print("")
+        if not MT5_AVAILABLE:
+            print("  " + YELLOW + "Biblioteca MetaTrader5 nu este instalata." + RESET)
+            print("  " + WHITE + "Instaleaza-o cu:" + RESET)
+            print("  " + CYAN + "    pip install MetaTrader5" + RESET)
+            print("")
+            print("  " + DIM + "  Nota: MetaTrader5 functioneaza doar pe Windows." + RESET)
+        else:
+            print("  " + YELLOW + "Terminalul MetaTrader 5 nu este deschis" + RESET)
+            print("  " + YELLOW + "sau nu s-a putut gasi simbolul XAUUSD." + RESET)
+        print("")
+        print("  " + CYAN + "Pasi pentru a porni botul:" + RESET)
+        print("  " + WHITE + "  1. Descarca si instaleaza MetaTrader 5:" + RESET)
+        print("  " + DIM + "     https://www.metatrader5.com/en/download" + RESET)
+        print("  " + WHITE + "  2. Deschide MetaTrader 5 si conecteaza-te la broker." + RESET)
+        print("  " + WHITE + "  3. In Market Watch (Ctrl+M) adauga XAUUSD" + RESET)
+        print("  " + DIM + "     (sau GOLD, XAUUSDm — depinde de broker)." + RESET)
+        print("  " + WHITE + "  4. Lasa terminalul MT5 deschis si reporneste botul." + RESET)
+        print("")
+        print("  " + DIM + "   Se reincearca in 10 secunde..." + RESET)
+
+    def display_warmup(self, candles):
+        """Shown while waiting for enough candles."""
+        os.system('cls' if os.name == 'nt' else 'clear')
+        bid = self.fetcher.bid
+        price_str = "$" + f"{bid:.2f}" if bid > 0 else "Se incarca..."
+        pct = int((candles / 35) * 100)
         bar_filled = int(pct / 5)
         bar = "#" * bar_filled + "-" * (20 - bar_filled)
 
         print("")
         print(CYAN + BOLD + "  ==============================================" + RESET)
-        print(CYAN + BOLD + "         XAU/USD TRADING BOT" + RESET)
-        print(CYAN + BOLD + "           LIVE PRICE FEED" + RESET)
+        print(CYAN + BOLD + "       XAU/USD TRADING BOT - MT5 LIVE" + RESET)
         print(CYAN + BOLD + "  ==============================================" + RESET)
         print("")
-        print("  " + YELLOW + "Se colecteaza date LIVE pentru indicatori..." + RESET)
+        print("  " + YELLOW + "Se colecteaza candele M1 de la MT5..." + RESET)
         print("")
-        print("  " + WHITE + "Pret curent:" + RESET + "  " + BOLD + price_str + RESET)
-        print("  " + WHITE + "Sursa:" + RESET + "        " + DIM + (self.fetcher.source if self.fetcher.source else "Se cauta...") + RESET)
-        print("  " + WHITE + "Progres:" + RESET + "      [" + bar + "] " + str(pct) + "%")
-        print("  " + WHITE + "Tick-uri:" + RESET + "     " + str(count) + "/" + str(needed))
+        print("  " + WHITE + "Bid curent:" + RESET + "  " + BOLD + price_str + RESET)
+        print("  " + WHITE + "Simbol:" + RESET + "      " + DIM + self.fetcher.symbol + RESET)
+        print("  " + WHITE + "Candele:" + RESET + "     [" + bar + "] " + str(pct) + "%  (" + str(candles) + "/35)")
         print("")
-        print("  " + DIM + "Se colecteaza minimum " + str(needed) + " puncte de pret" + RESET)
-        print("  " + DIM + "pentru calculul indicatorilor tehnici..." + RESET)
-        print("  " + DIM + "Timp estimat: ~" + str(max(0, (needed - count) * 10)) + " secunde" + RESET)
+        print("  " + DIM + "Se asteapta minimum 35 candele pentru indicatori..." + RESET)
 
-        if self.fetcher.errors:
-            print("")
-            print("  " + RED + "Erori la surse:" + RESET)
-            for err in self.fetcher.errors[-3:]:
-                print("  " + DIM + "  - " + str(err) + RESET)
-
-    def display_no_price(self):
-        os.system('cls' if os.name == 'nt' else 'clear')
-        print("")
-        print("  " + RED + "Nu s-a putut obtine pretul din nicio sursa." + RESET)
-        print("  " + YELLOW + "Verificati conexiunea la internet." + RESET)
-        print("  " + DIM + "Se reincearca in 5 secunde..." + RESET)
-        print("")
-        print("  " + CYAN + "Surse incercate:" + RESET)
-        print("  " + DIM + "  1. GiaVang.now (real-time)" + RESET)
-        print("  " + DIM + "  2. GoldPrice.org (real-time)" + RESET)
-        print("  " + DIM + "  3. Metals.live (real-time)" + RESET)
-        print("  " + DIM + "  4. FreeGoldAPI.com (daily)" + RESET)
-        print("  " + DIM + "  5. Frankfurter API (daily)" + RESET)
-        print("  " + DIM + "  6. ExchangeRate-API (daily)" + RESET)
-
-        if self.fetcher.errors:
-            print("")
-            print("  " + YELLOW + "Erori de la surse:" + RESET)
-            for err in self.fetcher.errors:
-                print("  " + DIM + "  - " + str(err) + RESET)
+    # ------------------------------------------------------------------
+    # Main loop
+    # ------------------------------------------------------------------
 
     def run(self):
         os.system('cls' if os.name == 'nt' else 'clear')
         print("")
         print(CYAN + BOLD + "  ==============================================" + RESET)
-        print(CYAN + BOLD + "         XAU/USD TRADING BOT" + RESET)
-        print(CYAN + BOLD + "           LIVE PRICE FEED" + RESET)
+        print(CYAN + BOLD + "       XAU/USD TRADING BOT - MT5 LIVE" + RESET)
         print(CYAN + BOLD + "  ==============================================" + RESET)
         print("")
-        print("  " + YELLOW + "Se conecteaza la sursele de date LIVE..." + RESET)
-        print("  " + DIM + "Se incearca 6 surse gratuite diferite." + RESET)
-        print("  " + DIM + "Asteapta cateva secunde." + RESET)
+        print("  " + YELLOW + "Se conecteaza la MetaTrader 5..." + RESET)
         print("")
 
-        MIN_TICKS = 35
-
         while True:
+            # (Re-)connect if needed
+            if not self.fetcher.connected:
+                if not self.fetcher.initialize():
+                    self.display_no_mt5()
+                    time.sleep(10)
+                    continue
+
             try:
-                price = self.fetcher.get_live_price()
+                now_ts = time.monotonic()
 
-                if price is None:
-                    self.display_no_price()
-                    time.sleep(5)
+                # Fetch latest tick (Bid/Ask) every iteration (~100 ms)
+                if not self.fetcher.get_tick():
+                    self.fetcher.connected = False
                     continue
 
-                self.tick_count = len(self.fetcher.prices_history)
+                # Refresh candles periodically
+                if now_ts - self._last_candle_refresh >= CANDLE_REFRESH_SECS:
+                    self.fetcher.update_candles()
+                    self._last_candle_refresh = now_ts
 
-                if self.tick_count < MIN_TICKS:
-                    self.display_warmup(self.tick_count, MIN_TICKS)
-                    time.sleep(10)
-                    continue
-
+                # Need candles to compute indicators
                 df = self.fetcher.get_dataframe()
-                if df is None:
-                    time.sleep(10)
+                if df is None or self.fetcher.candles_count < 35:
+                    self.display_warmup(self.fetcher.candles_count)
+                    time.sleep(0.1)
                     continue
 
-                ind = self.calculate_indicators(df)
-                if ind is None:
-                    print("")
-                    print("  " + RED + "Eroare la calculul indicatorilor." + RESET)
-                    print("  " + DIM + "Se reincearca in 10 secunde..." + RESET)
-                    time.sleep(10)
+                # Recalculate indicators periodically (not every tick)
+                if now_ts - self._last_indicator_calc >= INDICATOR_REFRESH_SECS:
+                    ind = self.calculate_indicators(df)
+                    if ind is not None:
+                        self._cached_indicators = ind
+                        self._cached_signal = self.get_signal(ind)
+                        self.update_position(self._cached_signal[0], self._cached_signal[1], ind)
+                    self._last_indicator_calc = now_ts
+
+                if self._cached_indicators is None:
+                    time.sleep(0.1)
                     continue
 
-                self.current_price = ind['price']
-                signal, strength, reasons = self.get_signal(ind)
-                self.update_position(signal, strength, ind)
-                self.display(ind, signal, strength, reasons)
+                signal, strength, reasons = self._cached_signal
+                self.display(self._cached_indicators, signal, strength, reasons)
 
-                time.sleep(10)
+                time.sleep(0.1)
 
             except KeyboardInterrupt:
                 print("")
                 print("")
                 print("  " + YELLOW + "Bot oprit de utilizator. La revedere!" + RESET)
                 print("")
+                self.fetcher.shutdown()
                 sys.exit(0)
             except Exception as e:
                 print("")
                 print("  " + RED + "Eroare: " + str(e) + RESET)
-                print("  " + DIM + "Se reincearca in 10 secunde..." + RESET)
-                time.sleep(10)
+                print("  " + DIM + "Se reincearca in 5 secunde..." + RESET)
+                time.sleep(5)
 
 
 if __name__ == '__main__':

@@ -29,7 +29,7 @@ echo   Se instaleaza dependentele necesare...
 echo   (poate dura 1-2 minute prima data)
 echo.
 
-pip install pandas ta requests --quiet --disable-pip-version-check
+pip install pandas ta MetaTrader5 --quiet --disable-pip-version-check
 
 if %errorlevel% neq 0 (
     echo.
