@@ -1,15 +1,13 @@
-# XAU/USD Trading Bot - MetaTrader 5
+# XAU/USD Auto-Trader — MetaTrader 5
 
-Bot minimalist de trading XAU/USD cu confirmare manuală.
+Auto-trader XAU/USD pe MT5, 50% balance, full automat.
 
 ## Cum funcționează
 
-1. Botul scanează piața XAU/USD prin MetaTrader 5 tick-by-tick
-2. Când detectează un semnal, afișează:
-   - `🟢 BUY la 3045.50? (da/nu):`
-   - `🔴 SELL la 3045.50? (da/nu):`
-3. Scrie `da` → botul plasează ordinul automat pe MT5 cu SL/TP
-4. Scrie `nu` → ignoră și continuă scanarea
+- Botul scanează XAU/USD prin MetaTrader 5 la fiecare 2 secunde
+- Calculează automat lot-ul din 50% din balanța contului
+- Când detectează semnal (RSI, EMA, MACD, Bollinger Bands) → execută imediat, fără confirmare
+- Afișează doar ce face: preț, semnal, SL, TP
 
 ## Cerințe
 
@@ -28,20 +26,15 @@ Sau dublu-click pe `START.bat`.
 
 ## Configurare
 
-| Parametru | Valoare |
-|-----------|---------|
-| Lot       | 0.01    |
-| SL        | 300 pips |
-| TP        | 500 pips |
-| Max pozitii | 3    |
-| Max spread  | 50 pips |
-| Cooldown    | 60 sec  |
-
-## Indicatori utilizați
-
-RSI (14), EMA 9/21, MACD (12,26,9), Bollinger Bands (20,2)
-
-Semnalul necesită minim 3 din 4 indicatori în aceeași direcție.
+| Parametru     | Valoare  |
+|---------------|----------|
+| Lot           | 50% din balanță |
+| SL            | 300 pips |
+| TP            | 500 pips |
+| Max poziții   | 3        |
+| Max spread    | 50 pips  |
+| Cooldown      | 60 sec   |
+| Magic number  | 123456   |
 
 ## ⚠️ DISCLAIMER
 
