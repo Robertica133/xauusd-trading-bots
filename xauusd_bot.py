@@ -1,9 +1,7 @@
 import os
 import sys
 import time
-import json
-import threading
-from datetime import datetime, timedelta
+from datetime import datetime
 
 try:
     import requests
@@ -343,11 +341,11 @@ class TradingBot:
             if signal == "BUY":
                 self.take_profit = price + atr * 2
                 self.stop_loss = price - atr * 1
-                self.history.append(f"  [{now.strftime('%H:%M')] {GREEN}BUY  @ ${price:.2f} -> TP: ${self.take_profit:.2f} | SL: ${self.stop_loss:.2f}{RESET}")
+                self.history.append(f"  [{now.strftime('%H:%M')}] {GREEN}BUY  @ ${price:.2f} -> TP: ${self.take_profit:.2f} | SL: ${self.stop_loss:.2f}{RESET}")
             elif signal == "SELL":
                 self.take_profit = price - atr * 2
                 self.stop_loss = price + atr * 1
-                self.history.append(f"  [{now.strftime('%H:%M')] {RED}SELL @ ${price:.2f} -> TP: ${self.take_profit:.2f} | SL: ${self.stop_loss:.2f}{RESET}")
+                self.history.append(f"  [{now.strftime('%H:%M')}] {RED}SELL @ ${price:.2f} -> TP: ${self.take_profit:.2f} | SL: ${self.stop_loss:.2f}{RESET}")
 
         if len(self.history) > 10:
             self.history = self.history[-10:]
@@ -405,11 +403,11 @@ class TradingBot:
         ema_trend = f"{GREEN}Bullish \u25b2{RESET}" if ind['ema9'] > ind['ema21'] else f"{RED}Bearish \u25bc{RESET}"
 
         print(f"""
-{CYAN}{BOLD}  \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}
+{CYAN}{BOLD}  \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}
 {CYAN}{BOLD}         \U0001f3c6  XAU/USD TRADING BOT  \U0001f3c6{RESET}
 {CYAN}{BOLD}           \u26a1 LIVE PRICE FEED \u26a1{RESET}
 {CYAN}{BOLD}              Leverage: 1:100{RESET}
-{CYAN}{BOLD}  \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}
+{CYAN}{BOLD}  \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}
 
   {YELLOW}\U0001f4b0 Pret LIVE:{RESET}          {WHITE}{BOLD}${price:.2f}{RESET}{price_change}
   {YELLOW}\U0001f550 Ultima actualizare:{RESET} {DIM}{now}{RESET}
@@ -425,7 +423,7 @@ class TradingBot:
   {WHITE}\U0001f4c8 ATR (14):{RESET}       {BOLD}${ind['atr']:.2f}{RESET}
 
   {CYAN}\u2500\u2500 SEMNAL ACTUAL \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500{RESET}
-  {sig_color}{BOLD}  {sig_icon} RECOMANDARE: {signal}{RESET}"""
+  {sig_color}{BOLD}  {sig_icon} RECOMANDARE: {signal}{RESET}''')
 
         if signal != "ASTEAPTA":
             if signal == "BUY":
@@ -461,13 +459,13 @@ class TradingBot:
         else:
             print(f"  {DIM}   Niciun semnal inca...{RESET}")
 
-        print(f"\n  {CYAN}\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}")
+        print(f"\n  {CYAN}\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}")
         print(f"  {RED}{BOLD}\u26a0\ufe0f  ATENTIE: Leverage 1:100 = RISC FOARTE MARE!{RESET}")
         print(f"  {YELLOW}   Acest bot este DOAR informativ/educational!{RESET}")
         print(f"  {YELLOW}   NU garanteaza profit. Tranzactioneaza responsabil.{RESET}")
         print(f"  {DIM}   Apasa Ctrl+C pentru a opri botul.{RESET}")
         print(f"  {DIM}   Se actualizeaza la fiecare 10 secunde (LIVE)...{RESET}")
-    
+
     def display_warmup(self, count, needed):
         os.system('cls' if os.name == 'nt' else 'clear')
         price_str = f"${self.fetcher.price:.2f}" if self.fetcher.price > 0 else "Se incarca..."
@@ -482,10 +480,10 @@ class TradingBot:
                 errors_str += f"\n  {DIM}  - {err}{RESET}"
 
         print(f"""
-{CYAN}{BOLD}  \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}
+{CYAN}{BOLD}  \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}
 {CYAN}{BOLD}         \U0001f3c6  XAU/USD TRADING BOT  \U0001f3c6{RESET}
 {CYAN}{BOLD}           \u26a1 LIVE PRICE FEED \u26a1{RESET}
-{CYAN}{BOLD}  \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}
+{CYAN}{BOLD}  \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}
 
   {YELLOW}\U0001f4e1 Se colecteaza date LIVE pentru indicatori...{RESET}
 
@@ -498,7 +496,7 @@ class TradingBot:
   {DIM}pentru calculul indicatorilor tehnici...{RESET}
   {DIM}Timp estimat: ~{max(0, (needed - count) * 10)} secunde{RESET}
 {errors_str}
-"""
+""")
 
     def display_no_price(self):
         os.system('cls' if os.name == 'nt' else 'clear')
@@ -521,15 +519,15 @@ class TradingBot:
   {DIM}  5. Frankfurter API (daily){RESET}
   {DIM}  6. ExchangeRate-API (daily){RESET}
 {errors_str}
-"""
+""")
 
     def run(self):
         os.system('cls' if os.name == 'nt' else 'clear')
         print(f"""
-{CYAN}{BOLD}  \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}
+{CYAN}{BOLD}  \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}
 {CYAN}{BOLD}         \U0001f3c6  XAU/USD TRADING BOT  \U0001f3c6{RESET}
 {CYAN}{BOLD}           \u26a1 LIVE PRICE FEED \u26a1{RESET}
-{CYAN}{BOLD}  \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}
+{CYAN}{BOLD}  \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}
 
   {YELLOW}Se conecteaza la sursele de date LIVE...{RESET}
   {DIM}Se incearca 6 surse gratuite diferite.{RESET}
@@ -584,16 +582,16 @@ class TradingBot:
 
 if __name__ == '__main__':
     print(f"{CYAN}{BOLD}")
-    print(f"  \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}")
+    print(f"  \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}")
     print(f"       DISCLAIMER / AVERTISMENT IMPORTANT")
-    print(f"  \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}")
+    print(f"  \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}")
     print(f"  {YELLOW}Acest bot este DOAR in scop educational/informativ.{RESET}")
     print(f"  {YELLOW}NU constituie sfat financiar sau de investitii.{RESET}")
     print(f"  {YELLOW}Tranzactionarea cu leverage 1:100 implica{RESET}")
     print(f"  {YELLOW}RISC FOARTE MARE de pierdere a capitalului.{RESET}")
     print(f"  {RED}{BOLD}  Foloseste-l pe propria raspundere!{RESET}")
-    print(f"  {CYAN}\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}")
+    print(f"  {CYAN}\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550{RESET}")
     print(f"\n  {WHITE}Apasa ENTER pentru a porni botul...{RESET}")
     input()
     bot = TradingBot()
-    bot.run()
+    bot.run()"
