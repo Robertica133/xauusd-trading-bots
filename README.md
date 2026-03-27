@@ -1,53 +1,62 @@
-# 🏆 XAU/USD Trading Signal Bot
+# 🥇 XAU/USD Trading Bot - MetaTrader 5 LIVE
 
-Bot de semnale trading pentru XAU/USD (Aur) cu analiza tehnica automata.
+Bot de semnale trading XAU/USD cu preț **LIVE** direct de la brokerul tău prin MetaTrader 5.
 
-## 🚀 Cum pornesti botul
+## ✨ Caracteristici
 
-1. **Descarca tot repository-ul** - apasa butonul verde `<> Code` apoi `Download ZIP`
-2. **Dezarhiveaza** folderul pe Desktop
-3. **Double-click pe `START.bat`** - totul se instaleaza automat!
-4. **Apasa ENTER** cand apare disclaimer-ul
-5. **Gata!** Botul ruleaza si iti arata semnale live!
+- 🔴 **Preț LIVE de la broker** - Bid/Ask identic cu MetaTrader 5
+- ⚡ **Actualizare la ~100ms** - tick-by-tick, aproape instant
+- 📊 **Indicatori tehnici pe date REALE** (candele M1 de la broker):
+  - RSI (14)
+  - EMA 9 / EMA 21
+  - MACD (12, 26, 9)
+  - Bollinger Bands (20, 2)
+  - ATR (14)
+- 🎯 **Semnale BUY / SELL / ASTEAPTA** cu putere și motive
+- 📈 Spread live, info cont, istoric semnale
+- ⚠️ Disclaimer și avertisment risc
 
-## 📊 Ce indicatori foloseste
+## 📋 Cerințe
 
-| Indicator | Ce face |
-|-----------|---------|
-| **RSI (14)** | Masoara daca aurul e supracumparat sau supravandut |
-| **EMA 9 & 21** | Arata directia trendului (sus sau jos) |
-| **MACD** | Confirma schimbarile de trend |
-| **Bollinger Bands** | Arata volatilitatea si limitele pretului |
-| **ATR** | Calculeaza cat de mult se misca pretul (pt Stop Loss / Take Profit) |
+- **Windows** (biblioteca MT5 funcționează doar pe Windows)
+- **MetaTrader 5** instalat și deschis
+- **Python 3.8+**
+- Cont activ la un broker cu simbol XAU/USD (sau GOLD)
 
-## 📋 Ce iti arata botul
+## 🚀 Instalare
 
-- **💰 Pret curent** XAU/USD in timp real
-- **🟢 BUY** - cand sa cumperi (cu Take Profit si Stop Loss)
-- **🔴 SELL** - cand sa vinzi (cu Take Profit si Stop Loss)
-- **⚪ ASTEAPTA** - cand nu e niciun semnal clar
-- **📊 Puterea semnalului** - cat de sigur e semnalul (Moderat/Puternic/Foarte Puternic)
-- **💵 Profit/Pierdere** - cat ai castiga/pierde pe pozitia curenta
-- **📜 Istoric** - ultimele 10 semnale
+```bash
+git clone https://github.com/Robertica133/xauusd-trading-bots.git
+cd xauusd-trading-bots
+pip install -r requirements.txt
+```
 
-## ⚙️ Cerinte
+## ▶️ Pornire
 
-- **Windows 10 sau 11**
-- **Python 3.8+** instalat (descarca de la https://www.python.org/downloads/)
-- **Conexiune la internet**
-- La instalarea Python, bifeaza **"Add Python to PATH"**!
+1. **Deschide MetaTrader 5** și logează-te la broker
+2. **Asigură-te că XAUUSD** (sau GOLD) este vizibil în Market Watch
+3. Rulează botul:
 
-## ⚠️ DISCLAIMER / AVERTISMENT
+```bash
+python xauusd_bot.py
+```
 
-**Acest bot este DOAR in scop educational si informativ.**
+Sau dublu-click pe `START.bat`
 
-- NU constituie sfat financiar sau de investitii
-- NU garanteaza profit
-- Tranzactionarea cu leverage 1:100 implica **RISC FOARTE MARE** de pierdere a capitalului
-- Poti pierde **tot capitalul** investit
-- Foloseste-l pe **propria raspundere**
-- Consulta un specialist financiar inainte de a tranzactiona cu bani reali
+## ⚙️ Configurare MT5
 
-## 🛑 Cum opresti botul
+Dacă simbolul nu este găsit automat:
 
-Apasa **Ctrl+C** in fereastra terminalului sau inchide fereastra.
+1. În MT5, click dreapta în **Market Watch**
+2. Alege **Show All** sau **Symbols**
+3. Caută **XAUUSD** sau **GOLD**
+4. Adaugă-l și repornește botul
+
+Botul caută automat printre variantele: `XAUUSD`, `GOLD`, `XAUUSDm`, `XAUUSD.a`, `XAUUSD.i`, `XAUUSD.raw`, `XAUUSDpro`
+
+## ⚠️ DISCLAIMER
+
+**Acest bot este DOAR în scop educațional/informativ.**
+- NU constituie sfat financiar sau de investiții
+- Tranzacționarea cu leverage 1:100 implică **RISC FOARTE MARE** de pierdere a capitalului
+- Folosește-l pe propria răspundere!
