@@ -1,62 +1,49 @@
-# 🥇 XAU/USD Trading Bot - MetaTrader 5 LIVE
+# XAU/USD Trading Bot - MetaTrader 5
 
-Bot de semnale trading XAU/USD cu preț **LIVE** direct de la brokerul tău prin MetaTrader 5.
+Bot minimalist de trading XAU/USD cu confirmare manuală.
 
-## ✨ Caracteristici
+## Cum funcționează
 
-- 🔴 **Preț LIVE de la broker** - Bid/Ask identic cu MetaTrader 5
-- ⚡ **Actualizare la ~100ms** - tick-by-tick, aproape instant
-- 📊 **Indicatori tehnici pe date REALE** (candele M1 de la broker):
-  - RSI (14)
-  - EMA 9 / EMA 21
-  - MACD (12, 26, 9)
-  - Bollinger Bands (20, 2)
-  - ATR (14)
-- 🎯 **Semnale BUY / SELL / ASTEAPTA** cu putere și motive
-- 📈 Spread live, info cont, istoric semnale
-- ⚠️ Disclaimer și avertisment risc
+1. Botul scanează piața XAU/USD prin MetaTrader 5 tick-by-tick
+2. Când detectează un semnal, afișează:
+   - `🟢 BUY la 3045.50? (da/nu):`
+   - `🔴 SELL la 3045.50? (da/nu):`
+3. Scrie `da` → botul plasează ordinul automat pe MT5 cu SL/TP
+4. Scrie `nu` → ignoră și continuă scanarea
 
-## 📋 Cerințe
+## Cerințe
 
-- **Windows** (biblioteca MT5 funcționează doar pe Windows)
-- **MetaTrader 5** instalat și deschis
-- **Python 3.8+**
-- Cont activ la un broker cu simbol XAU/USD (sau GOLD)
+- Windows (biblioteca MT5 funcționează doar pe Windows)
+- MetaTrader 5 instalat și deschis, cu cont activ (demo sau real)
+- Python 3.8+
 
-## 🚀 Instalare
+## Instalare și pornire
 
 ```bash
-git clone https://github.com/Robertica133/xauusd-trading-bots.git
-cd xauusd-trading-bots
 pip install -r requirements.txt
-```
-
-## ▶️ Pornire
-
-1. **Deschide MetaTrader 5** și logează-te la broker
-2. **Asigură-te că XAUUSD** (sau GOLD) este vizibil în Market Watch
-3. Rulează botul:
-
-```bash
 python xauusd_bot.py
 ```
 
-Sau dublu-click pe `START.bat`
+Sau dublu-click pe `START.bat`.
 
-## ⚙️ Configurare MT5
+## Configurare
 
-Dacă simbolul nu este găsit automat:
+| Parametru | Valoare |
+|-----------|---------|
+| Lot       | 0.01    |
+| SL        | 300 pips |
+| TP        | 500 pips |
+| Max pozitii | 3    |
+| Max spread  | 50 pips |
+| Cooldown    | 60 sec  |
 
-1. În MT5, click dreapta în **Market Watch**
-2. Alege **Show All** sau **Symbols**
-3. Caută **XAUUSD** sau **GOLD**
-4. Adaugă-l și repornește botul
+## Indicatori utilizați
 
-Botul caută automat printre variantele: `XAUUSD`, `GOLD`, `XAUUSDm`, `XAUUSD.a`, `XAUUSD.i`, `XAUUSD.raw`, `XAUUSDpro`
+RSI (14), EMA 9/21, MACD (12,26,9), Bollinger Bands (20,2)
+
+Semnalul necesită minim 3 din 4 indicatori în aceeași direcție.
 
 ## ⚠️ DISCLAIMER
 
-**Acest bot este DOAR în scop educațional/informativ.**
-- NU constituie sfat financiar sau de investiții
-- Tranzacționarea cu leverage 1:100 implică **RISC FOARTE MARE** de pierdere a capitalului
-- Folosește-l pe propria răspundere!
+**Doar scop educațional.** NU constituie sfat financiar.
+Tranzacționarea cu leverage implică risc mare de pierdere a capitalului.
