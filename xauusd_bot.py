@@ -18,6 +18,19 @@ except ImportError:
     from ta.trend import EMAIndicator, MACD
     from ta.volatility import BollingerBands, AverageTrueRange
 
+# ═══════════════════════════════════════════
+# AUTO-TRADING CONFIGURATION
+# ═══════════════════════════════════════════
+AUTO_TRADE_ENABLED = True      # True = plasează ordine automat, False = doar semnale
+LOT_SIZE = 0.01                # Dimensiunea lotului (0.01 = micro lot, minim pentru demo)
+STOP_LOSS_PIPS = 300           # Stop Loss în pips (puncte) - ex: 300 = ~3$ pe XAUUSD
+TAKE_PROFIT_PIPS = 500         # Take Profit în pips (puncte) - ex: 500 = ~5$ pe XAUUSD
+MAX_OPEN_POSITIONS = 3         # Maxim poziții deschise simultan
+MAGIC_NUMBER = 123456          # ID unic pentru ordinele botului
+TRADE_COOLDOWN = 60            # Secunde minim între tranzacții consecutive
+SYMBOL = "XAUUSD"              # Simbolul tranzacționat (suprascris după detectare)
+MAX_SPREAD_PIPS = 50           # Spread maxim acceptat (pips) - nu tranzacționează dacă e mai mare
+
 # Enable ANSI colors on Windows
 os.system('')
 
@@ -162,6 +175,9 @@ class TradingBot:
         self.cached_signal = ("ASTEAPTA", 0, [])
         self.indicator_interval = 2
         self.tick_count = 0
+        # Auto-trading state
+        self.last_trade_time = None       # timestamp of last executed trade
+        self.last_trade_info = None       # dict with info about last trade
 
     def calculate_indicators(self, df):
         """Calculeaza indicatori tehnici pe date REALE de la MT5"""
@@ -331,6 +347,162 @@ class TradingBot:
         else:
             return CYAN + "Neutru" + RESET
 
+    def get_open_positions(self):
+        """Returnează pozițiile deschise pentru simbol cu MAGIC_NUMBER-ul botului"""
+        positions = mt5.positions_get(symbol=self.mt5.symbol)
+        if positions is None:
+            return []
+        return [p for p in positions if p.magic == MAGIC_NUMBER]
+
+    def execute_trade(self, signal, price, strength=0):
+        """Plasează un ordin BUY sau SELL pe MT5 cu toate verificările de siguranță"""
+        if not AUTO_TRADE_ENABLED:
+            return None
+
+        # Verificare scor semnal > 60%
+        # max_conditions matches the number of indicator checks in get_signal()
+        max_conditions = 4
+        score_pct = int((strength / max_conditions) * 100)
+        if score_pct <= 60:
+            return None
+
+        # Verificare număr maxim de poziții deschise
+        open_positions = self.get_open_positions()
+        if len(open_positions) >= MAX_OPEN_POSITIONS:
+            return None
+
+        # Verificare cooldown
+        now_ts = time.time()
+        if self.last_trade_time is not None and (now_ts - self.last_trade_time) < TRADE_COOLDOWN:
+            return None
+
+        # Verificare spread
+        spread_pts = self.mt5.get_spread_points()
+        if spread_pts > MAX_SPREAD_PIPS:
+            now_str = datetime.now().strftime('%H:%M:%S')
+            self.history.append(
+                "  [" + now_str + "] " + YELLOW + "WARNING: Spread prea mare (" + str(spread_pts) + " pips) - ordin anulat" + RESET
+            )
+            return None
+
+        # Obține prețul live și informații despre simbol
+        tick = mt5.symbol_info_tick(self.mt5.symbol)
+        sym_info = mt5.symbol_info(self.mt5.symbol)
+        if tick is None or sym_info is None:
+            return None
+
+        point = sym_info.point if sym_info.point > 0 else 0.01
+        digits = sym_info.digits if sym_info.digits > 0 else 2
+
+        if signal == "BUY":
+            order_type = mt5.ORDER_TYPE_BUY
+            entry = tick.ask
+            sl = round(entry - STOP_LOSS_PIPS * point, digits)
+            tp = round(entry + TAKE_PROFIT_PIPS * point, digits)
+        elif signal == "SELL":
+            order_type = mt5.ORDER_TYPE_SELL
+            entry = tick.bid
+            sl = round(entry + STOP_LOSS_PIPS * point, digits)
+            tp = round(entry - TAKE_PROFIT_PIPS * point, digits)
+        else:
+            return None
+
+        request = {
+            "action": mt5.TRADE_ACTION_DEAL,
+            "symbol": self.mt5.symbol,
+            "volume": LOT_SIZE,
+            "type": order_type,
+            "price": entry,
+            "sl": sl,
+            "tp": tp,
+            "deviation": 20,
+            "magic": MAGIC_NUMBER,
+            "comment": "xauusd_bot",
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": mt5.ORDER_FILLING_IOC,
+        }
+
+        result = mt5.order_send(request)
+        now_str = datetime.now().strftime('%H:%M:%S')
+
+        if result is not None and result.retcode == mt5.TRADE_RETCODE_DONE:
+            self.last_trade_time = now_ts
+            self.last_trade_info = {
+                "signal": signal,
+                "price": entry,
+                "sl": sl,
+                "tp": tp,
+                "time": datetime.now(),
+            }
+            color = GREEN if signal == "BUY" else RED
+            self.history.append(
+                "  [" + now_str + "] " + color + BOLD + "AUTO-TRADE: " + signal + " " + f"{LOT_SIZE:.2f}" + " " + self.mt5.symbol + " @ $" + f"{entry:.2f}" + " | SL: $" + f"{sl:.2f}" + " | TP: $" + f"{tp:.2f}" + RESET
+            )
+            color_label = GREEN if signal == "BUY" else RED
+            print(color_label + BOLD + "  AUTO-TRADE: " + signal + " " + f"{LOT_SIZE:.2f}" + " " + self.mt5.symbol + " @ $" + f"{entry:.2f}" + " | SL: $" + f"{sl:.2f}" + " | TP: $" + f"{tp:.2f}" + RESET)
+        else:
+            retcode = result.retcode if result is not None else "N/A"
+            comment = result.comment if result is not None else "Fara raspuns"
+            self.history.append(
+                "  [" + now_str + "] " + RED + "EROARE ordin " + signal + ": " + str(retcode) + " - " + str(comment) + RESET
+            )
+
+        if len(self.history) > 10:
+            self.history = self.history[-10:]
+
+        return result
+
+    def close_position(self, position):
+        """Închide o poziție specifică (trimite ordinul opus)"""
+        tick = mt5.symbol_info_tick(self.mt5.symbol)
+        if tick is None:
+            return None
+
+        if position.type == mt5.ORDER_TYPE_BUY:
+            order_type = mt5.ORDER_TYPE_SELL
+            price = tick.bid
+        else:
+            order_type = mt5.ORDER_TYPE_BUY
+            price = tick.ask
+
+        request = {
+            "action": mt5.TRADE_ACTION_DEAL,
+            "symbol": self.mt5.symbol,
+            "volume": position.volume,
+            "type": order_type,
+            "position": position.ticket,
+            "price": price,
+            "deviation": 20,
+            "magic": MAGIC_NUMBER,
+            "comment": "xauusd_bot_close",
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": mt5.ORDER_FILLING_IOC,
+        }
+
+        result = mt5.order_send(request)
+        now_str = datetime.now().strftime('%H:%M:%S')
+        if result is not None and result.retcode == mt5.TRADE_RETCODE_DONE:
+            self.history.append(
+                "  [" + now_str + "] " + YELLOW + "INCHIS pozitie #" + str(position.ticket) + " @ $" + f"{price:.2f}" + RESET
+            )
+        else:
+            retcode = result.retcode if result is not None else "N/A"
+            self.history.append(
+                "  [" + now_str + "] " + RED + "EROARE inchidere pozitie #" + str(position.ticket) + ": " + str(retcode) + RESET
+            )
+        if len(self.history) > 10:
+            self.history = self.history[-10:]
+        return result
+
+    def close_all_positions(self):
+        """Închide toate pozițiile deschise ale botului (oprire de urgență)"""
+        positions = self.get_open_positions()
+        results = []
+        for pos in positions:
+            r = self.close_position(pos)
+            results.append(r)
+        return results
+
     def display(self, tick, ind, signal, strength, reasons):
         """Afiseaza interfata principala cu date LIVE de la MT5"""
         os.system('cls' if os.name == 'nt' else 'clear')
@@ -424,8 +596,46 @@ class TradingBot:
         else:
             print("  " + DIM + "   Niciun semnal inca..." + RESET)
 
+        # ── AUTO-TRADING STATUS SECTION ──────────────────────────────────────
         print("")
         print("  " + CYAN + "==============================================" + RESET)
+        if AUTO_TRADE_ENABLED:
+            at_label = GREEN + BOLD + "ACTIV" + RESET
+        else:
+            at_label = YELLOW + BOLD + "INACTIV (doar semnale)" + RESET
+        print("  " + BOLD + "  AUTO-TRADING: " + at_label)
+
+        open_pos = self.get_open_positions()
+        total_pl = sum(p.profit for p in open_pos) if open_pos else 0.0
+        pl_color = GREEN if total_pl >= 0 else RED
+        pl_sign = "+" if total_pl >= 0 else ""
+        print("  " + WHITE + "  Pozitii deschise: " + RESET + BOLD + str(len(open_pos)) + "/" + str(MAX_OPEN_POSITIONS) + RESET)
+        print("  " + WHITE + "  P/L Total: " + RESET + pl_color + BOLD + pl_sign + "$" + f"{total_pl:.2f}" + RESET)
+
+        if self.last_trade_info:
+            lt = self.last_trade_info
+            lt_color = GREEN if lt["signal"] == "BUY" else RED
+            elapsed = int((datetime.now() - lt["time"]).total_seconds())
+            if elapsed < 60:
+                elapsed_str = str(elapsed) + " sec"
+            else:
+                elapsed_str = str(elapsed // 60) + " min"
+            print("  " + WHITE + "  Ultima tranzactie: " + RESET + lt_color + BOLD + lt["signal"] + " @ $" + f"{lt['price']:.2f}" + RESET + DIM + " (acum " + elapsed_str + ")" + RESET)
+        else:
+            print("  " + WHITE + "  Ultima tranzactie: " + RESET + DIM + "Niciuna inca" + RESET)
+
+        if AUTO_TRADE_ENABLED and self.last_trade_time is not None:
+            elapsed_cd = time.time() - self.last_trade_time
+            if elapsed_cd < TRADE_COOLDOWN:
+                remaining = int(TRADE_COOLDOWN - elapsed_cd)
+                cd_str = YELLOW + "Wait " + str(remaining) + "s" + RESET
+            else:
+                cd_str = GREEN + "READY" + RESET
+        else:
+            cd_str = GREEN + "READY" + RESET
+        print("  " + WHITE + "  Cooldown: " + RESET + cd_str)
+        print("  " + CYAN + "==============================================" + RESET)
+
         print("  " + RED + BOLD + "ATENTIE: Leverage 1:100 = RISC FOARTE MARE!" + RESET)
         print("  " + YELLOW + "   Acest bot este DOAR informativ/educational!" + RESET)
         print("  " + YELLOW + "   NU garanteaza profit. Tranzactioneaza responsabil." + RESET)
@@ -522,6 +732,9 @@ class TradingBot:
                             signal, strength, reasons = self.get_signal(ind)
                             self.cached_signal = (signal, strength, reasons)
                             self.update_position(signal, strength, tick.bid, ind['atr'])
+                            # Auto-trading: execută ordin dacă semnalul este BUY sau SELL
+                            if signal in ("BUY", "SELL"):
+                                self.execute_trade(signal, tick.bid, strength)
                     self.last_indicator_calc = current_time
 
                 if self.cached_indicators is not None:
