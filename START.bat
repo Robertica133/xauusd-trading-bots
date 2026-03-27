@@ -29,7 +29,7 @@ echo   Se instaleaza dependentele necesare...
 echo   (poate dura 1-2 minute prima data)
 echo.
 
-pip install yfinance pandas ta requests --quiet --disable-pip-version-check
+pip install pandas ta requests --quiet --disable-pip-version-check
 
 if %errorlevel% neq 0 (
     echo.
@@ -52,7 +52,7 @@ if %errorlevel% neq 0 (
     echo.
     echo   [EROARE] Botul s-a oprit cu o eroare.
     echo   Verifica mesajul de mai sus.
-    echo.
+echo.
 )
 
 pause
