@@ -17,13 +17,29 @@ BALANCE_PCT    = 0.50
 SYMBOLS        = ["XAUUSD", "GOLD", "XAUUSDm", "XAUUSD.a", "XAUUSD.i",
                   "XAUUSD.raw", "XAUUSDpro"]
 
+# ═══════════════════════════════════════════
+# COMPOUNDING / PROFIT MANAGEMENT
+# ═══════════════════════════════════════════
+PROFIT_TARGET_PCT = 5.0        # Close all positions when profit reaches +5% of balance
+MAX_LOSS_PCT      = 3.0        # Close all positions if loss reaches -3% of balance (safety)
+REINVEST_PCT      = 50.0       # Reinvest 50% of profit into next cycle (lot size recalc)
+BASE_LOT_PER_1000 = 0.01       # Base lot size per $1000 of effective balance
+MIN_LOT           = 0.01       # Minimum lot size allowed
+MAX_LOT           = 1.0        # Maximum lot size allowed
+
 last_trade = 0
 symbol     = None
 lot        = 0.01
 
+# ── Stare ciclu compounding ───────────────────────────────────────────────────
+cycle_start_balance = None
+cycle_number        = 0
+effective_balance   = None
+history             = []
+
 # ── Conexiune MT5 ─────────────────────────────────────────────────────────────
 def connect():
-    global symbol, lot
+    global symbol, lot, cycle_start_balance, effective_balance
     print("Conectare MT5...", end=" ", flush=True)
     if not mt5.initialize():
         print("EROARE:", mt5.last_error())
@@ -47,8 +63,11 @@ def connect():
     acc_type = "Demo" if acc.trade_mode == mt5.ACCOUNT_TRADE_MODE_DEMO else "Real"
     print(f"Cont: {acc.login} ({acc_type}) | Balanta: ${acc.balance:.2f}")
 
-    lot = calc_lot(acc.balance)
-    print(f"Simbol: {symbol} | Lot calculat: {lot:.2f} (50% din balanta)\n")
+    cycle_start_balance = acc.balance
+    effective_balance   = acc.balance
+
+    recalculate_lot_size()
+    print(f"Simbol: {symbol} | Lot calculat: {lot:.2f}\n")
 
 # ── Calculeaza lot dinamic (50% din balanta) ──────────────────────────────────
 def calc_lot(balance):
@@ -63,6 +82,148 @@ def calc_lot(balance):
     step          = info.volume_step
     raw           = max(info.volume_min, min(info.volume_max, raw))
     return round(round(raw / step) * step, 2)
+
+# ── Recalculeaza lot pe baza balantei efective ────────────────────────────────
+def recalculate_lot_size():
+    global lot, effective_balance
+    if effective_balance is None:
+        acc = mt5.account_info()
+        if acc is None:
+            return
+        effective_balance = acc.balance
+    new_lot = (effective_balance / 1000.0) * BASE_LOT_PER_1000
+    new_lot = max(MIN_LOT, min(MAX_LOT, new_lot))
+    new_lot = round(new_lot, 2)
+    lot = new_lot
+    ts  = datetime.now().strftime("%H:%M:%S")
+    msg = f"[{ts}] Lot recalculat: {lot:.2f} (balanta efectiva: ${effective_balance:.2f})"
+    if len(history) >= 1000:
+        del history[:500]
+    history.append(msg)
+
+# ── Inchide toate pozitiile deschise ──────────────────────────────────────────
+def close_all_positions():
+    positions = mt5.positions_get(symbol=symbol)
+    if not positions:
+        return
+    for pos in positions:
+        tick = mt5.symbol_info_tick(symbol)
+        if tick is None:
+            continue
+        if pos.type == mt5.ORDER_TYPE_BUY:
+            price   = tick.bid
+            otype   = mt5.ORDER_TYPE_SELL
+        else:
+            price   = tick.ask
+            otype   = mt5.ORDER_TYPE_BUY
+
+        info = mt5.symbol_info(symbol)
+        fm   = info.filling_mode
+        if fm & mt5.ORDER_FILLING_IOC:
+            filling = mt5.ORDER_FILLING_IOC
+        elif fm & mt5.ORDER_FILLING_FOK:
+            filling = mt5.ORDER_FILLING_FOK
+        else:
+            filling = mt5.ORDER_FILLING_RETURN
+
+        req = {
+            "action":       mt5.TRADE_ACTION_DEAL,
+            "symbol":       symbol,
+            "volume":       pos.volume,
+            "type":         otype,
+            "position":     pos.ticket,
+            "price":        price,
+            "deviation":    20,
+            "magic":        MAGIC,
+            "comment":      "close_all",
+            "type_time":    mt5.ORDER_TIME_GTC,
+            "type_filling": filling,
+        }
+        mt5.order_send(req)
+
+# ── Verifica target profit / stop loss global ─────────────────────────────────
+def check_profit_target():
+    global cycle_start_balance, cycle_number, effective_balance
+    if cycle_start_balance is None:
+        return False
+
+    acc = mt5.account_info()
+    if acc is None:
+        return False
+
+    equity     = acc.equity
+    current_pl = equity - cycle_start_balance
+    pl_pct     = (current_pl / cycle_start_balance) * 100 if cycle_start_balance > 0 else 0.0
+    ts         = datetime.now().strftime("%H:%M:%S")
+
+    if pl_pct >= PROFIT_TARGET_PCT:
+        close_all_positions()
+        profit   = current_pl
+        reinvest = profit * (REINVEST_PCT / 100.0)
+        effective_balance = cycle_start_balance + reinvest
+        cycle_number += 1
+        new_acc = mt5.account_info()
+        cycle_start_balance = new_acc.balance if new_acc else equity
+        recalculate_lot_size()
+        msg = (f"[{ts}] CICLU #{cycle_number} COMPLET! "
+               f"Profit: +${profit:.2f} (+{pl_pct:.2f}%) | "
+               f"Reinvestit: ${reinvest:.2f} | Nou lot: {lot:.2f}")
+        if len(history) >= 1000:
+            del history[:500]
+        history.append(msg)
+        print(msg)
+        return True
+
+    if pl_pct <= -MAX_LOSS_PCT:
+        close_all_positions()
+        msg = (f"[{ts}] STOP LOSS GLOBAL: {pl_pct:.2f}% | "
+               f"Toate pozitiile inchise | Se continua cu lot recalculat")
+        if len(history) >= 1000:
+            del history[:500]
+        history.append(msg)
+        print(msg)
+        new_acc = mt5.account_info()
+        cycle_start_balance = new_acc.balance if new_acc else equity
+        effective_balance   = cycle_start_balance
+        recalculate_lot_size()
+        return True
+
+    return False
+
+# ── Afiseaza status compounding ────────────────────────────────────────────────
+def display_status(price):
+    if cycle_start_balance is None:
+        return
+    acc = mt5.account_info()
+    if acc is None:
+        return
+    equity     = acc.equity
+    current_pl = equity - cycle_start_balance
+    pl_pct     = (current_pl / cycle_start_balance) * 100 if cycle_start_balance > 0 else 0.0
+    target_amt = cycle_start_balance * (PROFIT_TARGET_PCT / 100.0)
+    sl_amt     = cycle_start_balance * (MAX_LOSS_PCT / 100.0)
+
+    # Progress bar toward profit target (0–100%)
+    progress = (max(0.0, min(1.0, pl_pct / PROFIT_TARGET_PCT))
+                if pl_pct > 0 and PROFIT_TARGET_PCT > 0 else 0.0)
+    bar_len  = 16
+    filled   = int(bar_len * progress)
+    bar      = "█" * filled + "░" * (bar_len - filled)
+    pct_bar  = int(progress * 100)
+
+    pl_sign = "+" if current_pl >= 0 else ""
+    print(
+        f"  ── COMPOUNDING STATUS ─────────────────────────\n"
+        f"  Ciclu:              #{cycle_number}\n"
+        f"  Balanta initiala:   ${cycle_start_balance:,.2f}\n"
+        f"  Balanta efectiva:   ${effective_balance:,.2f}\n"
+        f"  Lot actual:         {lot:.2f}\n"
+        f"  Profit curent:      {pl_sign}${current_pl:.2f} ({pl_sign}{pl_pct:.2f}%)\n"
+        f"  Target:             +{PROFIT_TARGET_PCT}% (${target_amt:,.2f})\n"
+        f"  Stop Loss Global:   -{MAX_LOSS_PCT}% (${sl_amt:,.2f})\n"
+        f"  Progress:           [{bar}] {pct_bar}%\n"
+        f"  ───────────────────────────────────────────────"
+    )
 
 # ── Numara pozitii deschise ────────────────────────────────────────────────────
 def open_positions():
@@ -158,6 +319,9 @@ def run():
 
     try:
         while True:
+            # Check profit target / stop loss every tick
+            check_profit_target()
+
             tick = mt5.symbol_info_tick(symbol)
             if tick is None:
                 time.sleep(1)
@@ -186,13 +350,14 @@ def run():
             if signal in ("BUY", "SELL"):
                 ok, sl, tp = place_order(signal)
                 if ok:
-                    print(f"[{ts}] Pret: {price:.2f} | Semnal: {signal} | ✅ EXECUTAT | SL: {sl:.2f} | TP: {tp:.2f}")
+                    print(f"[{ts}] Pret: {price:.2f} | Semnal: {signal} | ✅ EXECUTAT | SL: {sl:.2f} | TP: {tp:.2f} | Lot: {lot:.2f}")
                     last_trade = time.time()
                 else:
                     print(f"[{ts}] Pret: {price:.2f} | Semnal: {signal} | ❌ Eroare executie")
             else:
                 print(f"[{ts}] Pret: {price:.2f} | Fara semnal")
 
+            display_status(price)
             time.sleep(2)
 
     except KeyboardInterrupt:
