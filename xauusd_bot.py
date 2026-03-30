@@ -1,3 +1,4 @@
+import math
 import time
 import sys
 from datetime import datetime
@@ -23,9 +24,11 @@ SYMBOLS        = ["XAUUSD", "GOLD", "XAUUSDm", "XAUUSD.a", "XAUUSD.i",
 PROFIT_TARGET_PCT = 5.0        # Close all positions when profit reaches +5% of balance
 MAX_LOSS_PCT      = 3.0        # Close all positions if loss reaches -3% of balance (safety)
 REINVEST_PCT      = 50.0       # Reinvest 50% of profit into next cycle (lot size recalc)
-BASE_LOT_PER_1000 = 0.01       # Base lot size per $1000 of effective balance
-MIN_LOT           = 0.01       # Minimum lot size allowed
-MAX_LOT           = 1.0        # Maximum lot size allowed
+BALANCE_USAGE_PCT   = 50.0     # Use 50% of effective balance for position sizing
+MIN_LOT             = 0.01     # Minimum lot size allowed
+MAX_LOT             = 100.0    # Maximum lot size allowed
+DEFAULT_LEVERAGE    = 100      # Fallback leverage when MT5 cannot provide it
+DEFAULT_VOLUME_STEP = 0.01     # Fallback volume step when broker info is unavailable
 
 last_trade = 0
 symbol     = None
@@ -83,7 +86,7 @@ def calc_lot(balance):
     raw           = max(info.volume_min, min(info.volume_max, raw))
     return round(round(raw / step) * step, 2)
 
-# ── Recalculeaza lot pe baza balantei efective ────────────────────────────────
+# ── Recalculeaza lot pe baza a 50% din balanta efectiva ──────────────────────
 def recalculate_lot_size():
     global lot, effective_balance
     if effective_balance is None:
@@ -91,12 +94,54 @@ def recalculate_lot_size():
         if acc is None:
             return
         effective_balance = acc.balance
-    new_lot = (effective_balance / 1000.0) * BASE_LOT_PER_1000
-    new_lot = max(MIN_LOT, min(MAX_LOT, new_lot))
+
+    sym_info = mt5.symbol_info(symbol)
+    if sym_info is None:
+        return
+
+    tick = mt5.symbol_info_tick(symbol)
+    if tick is None:
+        return
+
+    # 50% of effective balance is the margin available for trading
+    available_margin = effective_balance * (BALANCE_USAGE_PCT / 100.0)
+
+    # Try to get exact margin for 1.0 lot from MT5
+    margin_for_one_lot = mt5.order_calc_margin(
+        mt5.ORDER_TYPE_BUY,
+        symbol,
+        1.0,
+        tick.ask
+    )
+
+    if margin_for_one_lot is None or margin_for_one_lot <= 0:
+        # Fallback: (price * contract_size) / leverage
+        acc = mt5.account_info()
+        leverage = acc.leverage if acc and acc.leverage > 0 else DEFAULT_LEVERAGE
+        contract_size = sym_info.trade_contract_size  # usually 100 for XAUUSD
+        margin_for_one_lot = (tick.ask * contract_size) / leverage
+
+    if margin_for_one_lot > 0:
+        new_lot = available_margin / margin_for_one_lot
+    else:
+        new_lot = MIN_LOT
+
+    # Round down to broker volume step
+    lot_step = sym_info.volume_step if sym_info.volume_step > 0 else DEFAULT_VOLUME_STEP
+    new_lot  = math.floor(new_lot / lot_step) * lot_step
+
+    # Clamp between broker min/max and our safety MAX_LOT
+    vol_min = sym_info.volume_min if sym_info.volume_min > 0 else MIN_LOT
+    vol_max = min(sym_info.volume_max, MAX_LOT) if sym_info.volume_max > 0 else MAX_LOT
+    new_lot = max(vol_min, min(vol_max, new_lot))
     new_lot = round(new_lot, 2)
-    lot = new_lot
-    ts  = datetime.now().strftime("%H:%M:%S")
-    msg = f"[{ts}] Lot recalculat: {lot:.2f} (balanta efectiva: ${effective_balance:.2f})"
+
+    old_lot = lot
+    lot     = new_lot
+    ts      = datetime.now().strftime("%H:%M:%S")
+    msg = (f"[{ts}] Lot recalculat: {old_lot:.2f} → {new_lot:.2f} "
+           f"({BALANCE_USAGE_PCT:.0f}% din ${effective_balance:.2f} = ${available_margin:.2f} marja | "
+           f"marja/lot: ${margin_for_one_lot:.2f})")
     if len(history) >= 1000:
         del history[:500]
     history.append(msg)
@@ -212,12 +257,14 @@ def display_status(price):
     pct_bar  = int(progress * 100)
 
     pl_sign = "+" if current_pl >= 0 else ""
+    margin_used = effective_balance * (BALANCE_USAGE_PCT / 100.0)
     print(
         f"  ── COMPOUNDING STATUS ─────────────────────────\n"
         f"  Ciclu:              #{cycle_number}\n"
         f"  Balanta initiala:   ${cycle_start_balance:,.2f}\n"
         f"  Balanta efectiva:   ${effective_balance:,.2f}\n"
-        f"  Lot actual:         {lot:.2f}\n"
+        f"  Marja utilizata:    {BALANCE_USAGE_PCT:.0f}% din balanta = ${margin_used:,.2f}\n"
+        f"  Lot calculat:       {lot:.2f}\n"
         f"  Profit curent:      {pl_sign}${current_pl:.2f} ({pl_sign}{pl_pct:.2f}%)\n"
         f"  Target:             +{PROFIT_TARGET_PCT}% (${target_amt:,.2f})\n"
         f"  Stop Loss Global:   -{MAX_LOSS_PCT}% (${sl_amt:,.2f})\n"
