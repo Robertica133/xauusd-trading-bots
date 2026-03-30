@@ -21,8 +21,8 @@ SYMBOLS        = ["XAUUSD", "GOLD", "XAUUSDm", "XAUUSD.a", "XAUUSD.i",
 # ═══════════════════════════════════════════
 # COMPOUNDING / PROFIT MANAGEMENT
 # ═══════════════════════════════════════════
-PROFIT_TARGET_PCT = 5.0        # Close all positions when profit reaches +5% of balance
-MAX_LOSS_PCT      = 3.0        # Close all positions if loss reaches -3% of balance (safety)
+PROFIT_TARGET_PCT = 1.5        # Close all positions when profit reaches +1.5% of balance
+MAX_LOSS_PCT      = 1.5        # Close all positions if loss reaches -1.5% of balance (safety)
 REINVEST_PCT      = 50.0       # Reinvest 50% of profit into next cycle (lot size recalc)
 BALANCE_USAGE_PCT   = 50.0     # Use 50% of effective balance for position sizing
 MIN_LOT             = 0.01     # Minimum lot size allowed
