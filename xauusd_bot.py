@@ -27,7 +27,7 @@ REINVEST_PCT      = 50.0       # Reinvest 50% of profit into next cycle (lot siz
 BALANCE_USAGE_PCT   = 50.0     # Use 50% of effective balance for position sizing
 MIN_LOT             = 0.01     # Minimum lot size allowed
 MAX_LOT             = 100.0    # Maximum lot size allowed
-DEFAULT_LEVERAGE    = 100      # Fallback leverage when MT5 cannot provide it
+DEFAULT_LEVERAGE    = 500      # Fallback leverage (1:500) when MT5 cannot provide it
 DEFAULT_VOLUME_STEP = 0.01     # Fallback volume step when broker info is unavailable
 
 last_trade = 0
@@ -115,7 +115,7 @@ def recalculate_lot_size():
     )
 
     if margin_for_one_lot is None or margin_for_one_lot <= 0:
-        # Fallback: (price * contract_size) / leverage
+        # Fallback: (price * contract_size) / leverage  [1:500 leverage]
         acc = mt5.account_info()
         leverage = acc.leverage if acc and acc.leverage > 0 else DEFAULT_LEVERAGE
         contract_size = sym_info.trade_contract_size  # usually 100 for XAUUSD
@@ -280,8 +280,8 @@ def open_positions():
 # ── Indicatori si semnal ──────────────────────────────────────────────────────
 def get_signal():
     rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_M1, 0, 100)
-    if rates is None or len(rates) < 50:
-        return None
+    if rates is None or len(rates) < 52:
+        return None, 0, {}
 
     df        = pd.DataFrame(rates)
     df["rsi"] = ta.momentum.RSIIndicator(df["close"], window=14).rsi()
@@ -293,25 +293,137 @@ def get_signal():
     bb        = ta.volatility.BollingerBands(df["close"], window=20, window_dev=2)
     df["bbl"] = bb.bollinger_lband()
     df["bbh"] = bb.bollinger_hband()
+    df["bbm"] = bb.bollinger_mavg()
 
-    r = df.iloc[-1]
-    buy = sell = 0
+    r    = df.iloc[-1]
+    prev = df.iloc[-2]
 
-    if r["rsi"] < 40:   buy  += 1
-    elif r["rsi"] > 60: sell += 1
+    ind = {
+        "ema9":             r["e9"],
+        "ema21":            r["e21"],
+        "prev_ema9":        prev["e9"],
+        "prev_ema21":       prev["e21"],
+        "macd":             r["mc"],
+        "macd_signal":      r["ms"],
+        "prev_macd":        prev["mc"],
+        "prev_macd_signal": prev["ms"],
+        "rsi":              r["rsi"],
+        "price":            r["close"],
+        "bb_lower":         r["bbl"],
+        "bb_upper":         r["bbh"],
+        "bb_middle":        r["bbm"],
+    }
 
-    if r["e9"] > r["e21"]:   buy  += 1
-    elif r["e9"] < r["e21"]: sell += 1
+    bb_range        = ind["bb_upper"] - ind["bb_lower"]
+    buy_conditions  = 0
+    sell_conditions = 0
+    buy_reasons     = []
+    sell_reasons    = []
 
-    if r["mc"] > r["ms"]:   buy  += 1
-    elif r["mc"] < r["ms"]: sell += 1
+    # A) EMA Crossover
+    if ind["ema9"] > ind["ema21"] and ind["prev_ema9"] <= ind["prev_ema21"]:
+        buy_conditions += 2
+        buy_reasons.append("EMA9/21 CROSSOVER bullish (puternic!)")
+    elif ind["ema9"] > ind["ema21"]:
+        buy_conditions += 1
+        buy_reasons.append("EMA9 > EMA21 (bullish)")
 
-    if r["close"] < r["bbl"]:   buy  += 1
-    elif r["close"] > r["bbh"]: sell += 1
+    if ind["ema9"] < ind["ema21"] and ind["prev_ema9"] >= ind["prev_ema21"]:
+        sell_conditions += 2
+        sell_reasons.append("EMA9/21 CROSSOVER bearish (puternic!)")
+    elif ind["ema9"] < ind["ema21"]:
+        sell_conditions += 1
+        sell_reasons.append("EMA9 < EMA21 (bearish)")
 
-    if buy  >= MIN_INDICATORS: return "BUY"
-    if sell >= MIN_INDICATORS: return "SELL"
-    return None
+    # B) MACD Crossover
+    if ind["macd"] > ind["macd_signal"] and ind["prev_macd"] <= ind["prev_macd_signal"]:
+        buy_conditions += 2
+        buy_reasons.append("MACD CROSSOVER bullish (puternic!)")
+    elif ind["macd"] > ind["macd_signal"]:
+        buy_conditions += 1
+        buy_reasons.append("MACD bullish")
+
+    if ind["macd"] < ind["macd_signal"] and ind["prev_macd"] >= ind["prev_macd_signal"]:
+        sell_conditions += 2
+        sell_reasons.append("MACD CROSSOVER bearish (puternic!)")
+    elif ind["macd"] < ind["macd_signal"]:
+        sell_conditions += 1
+        sell_reasons.append("MACD bearish")
+
+    # C) RSI with zones
+    if ind["rsi"] < 25:
+        buy_conditions += 2
+        buy_reasons.append("RSI EXTREM supravandut (<25)")
+    elif ind["rsi"] < 35:
+        buy_conditions += 1
+        buy_reasons.append("RSI supravandut")
+
+    if ind["rsi"] > 75:
+        sell_conditions += 2
+        sell_reasons.append("RSI EXTREM supracumparat (>75)")
+    elif ind["rsi"] > 65:
+        sell_conditions += 1
+        sell_reasons.append("RSI supracumparat")
+
+    # D) Bollinger Band breakout / squeeze
+    if bb_range > 0:
+        if ind["price"] < ind["bb_lower"]:
+            buy_conditions += 2
+            buy_reasons.append("Pret SUB banda Bollinger (strong buy)")
+        elif ind["price"] <= ind["bb_lower"] + bb_range * 0.1:
+            buy_conditions += 1
+            buy_reasons.append("Pret la banda inferioara Bollinger")
+
+        if ind["price"] > ind["bb_upper"]:
+            sell_conditions += 2
+            sell_reasons.append("Pret PESTE banda Bollinger (strong sell)")
+        elif ind["price"] >= ind["bb_upper"] - bb_range * 0.1:
+            sell_conditions += 1
+            sell_reasons.append("Pret la banda superioara Bollinger")
+
+    # F) Weighted threshold — require score >= 4 and a clear margin over opposite side
+    signal   = None
+    strength = 0
+    if buy_conditions >= 4 and buy_conditions > sell_conditions + 1:
+        signal   = "BUY"
+        strength = buy_conditions
+    elif sell_conditions >= 4 and sell_conditions > buy_conditions + 1:
+        signal   = "SELL"
+        strength = sell_conditions
+
+    return signal, strength, ind
+
+# ── Verifica alinierea cu trendul general ──────────────────────────────────────
+def check_trend_alignment(ind, signal):
+    """Verifica daca semnalul e in directia trendului general"""
+    ema_bullish     = ind["ema9"] > ind["ema21"]
+    macd_bullish    = ind["macd"] > ind["macd_signal"]
+    price_above_mid = ind["price"] > ind["bb_middle"]
+
+    if signal == "BUY":
+        bullish_count = sum([ema_bullish, macd_bullish, price_above_mid])
+        return bullish_count >= 2
+    elif signal == "SELL":
+        bearish_count = sum([not ema_bullish, not macd_bullish, not price_above_mid])
+        return bearish_count >= 2
+    return False
+
+# ── Bara de forta semnal ───────────────────────────────────────────────────────
+def get_strength_bar(strength):
+    max_str = 8  # max weighted score
+    filled  = min(strength, max_str)
+    empty   = max_str - filled
+    bar     = "#" * (filled * 2) + "-" * (empty * 2)
+    pct     = int((strength / max_str) * 100)
+    if pct >= 75:
+        label = "Foarte Puternic"
+    elif pct >= 50:
+        label = "Puternic"
+    elif pct >= 35:
+        label = "Moderat"
+    else:
+        label = "Slab"
+    return bar + " " + str(pct) + "% (" + label + ")"
 
 # ── Plaseaza ordin ────────────────────────────────────────────────────────────
 def place_order(direction):
@@ -392,15 +504,21 @@ def run():
                 time.sleep(2)
                 continue
 
-            signal = get_signal()
+            signal, strength, ind = get_signal()
 
-            if signal in ("BUY", "SELL"):
-                ok, sl, tp = place_order(signal)
-                if ok:
-                    print(f"[{ts}] Pret: {price:.2f} | Semnal: {signal} | ✅ EXECUTAT | SL: {sl:.2f} | TP: {tp:.2f} | Lot: {lot:.2f}")
-                    last_trade = time.time()
+            max_conditions = 8
+            score_pct = int((strength / max_conditions) * 100) if strength > 0 else 0
+
+            if signal in ("BUY", "SELL") and strength >= 4 and score_pct > 50:
+                if check_trend_alignment(ind, signal):
+                    ok, sl, tp = place_order(signal)
+                    if ok:
+                        print(f"[{ts}] Pret: {price:.2f} | Semnal: {signal} | ✅ EXECUTAT | SL: {sl:.2f} | TP: {tp:.2f} | Lot: {lot:.2f} | Scor: {get_strength_bar(strength)}")
+                        last_trade = time.time()
+                    else:
+                        print(f"[{ts}] Pret: {price:.2f} | Semnal: {signal} | ❌ Eroare executie")
                 else:
-                    print(f"[{ts}] Pret: {price:.2f} | Semnal: {signal} | ❌ Eroare executie")
+                    print(f"[{ts}] Pret: {price:.2f} | BLOCAT {signal}: Trend nu confirma directia")
             else:
                 print(f"[{ts}] Pret: {price:.2f} | Fara semnal")
 
